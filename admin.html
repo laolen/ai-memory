@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AI Memory 管理界面</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
+         background: #0f1419; color: #e6edf3; font-size: 14px; }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: #161b22; border-bottom: 1px solid #30363d; }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  .status { font-size: 12px; margin-left: auto; display: flex; gap: 12px; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
+  .ok { background: #3fb950; } .bad { background: #f85149; } .warn { background: #d29922; }
+  .tabs { display: flex; gap: 4px; padding: 0 20px; background: #161b22; border-bottom: 1px solid #30363d; }
+  .tab { padding: 10px 16px; cursor: pointer; border: 1px solid transparent; border-bottom: none; color: #8b949e; }
+  .tab.active { color: #e6edf3; background: #0f1419; border-color: #30363d; border-radius: 6px 6px 0 0; margin-bottom: -1px; }
+  .pane { display: none; padding: 20px; }
+  .pane.active { display: block; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 18px; max-width: 720px; }
+  label { display: block; font-size: 12px; color: #8b949e; margin: 12px 0 4px; }
+  input, select, textarea { width: 100%; padding: 8px 10px; background: #0d1117; border: 1px solid #30363d;
+         border-radius: 6px; color: #e6edf3; font-size: 13px; font-family: inherit; }
+  textarea { resize: vertical; min-height: 70px; }
+  .row { display: flex; gap: 12px; } .row > div { flex: 1; }
+  button { background: #238636; color: #fff; border: none; padding: 9px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-top: 14px; }
+  button:hover { background: #2ea043; }
+  button.danger { background: #da3633; } button.danger:hover { background: #f85149; }
+  button.ghost { background: #21262d; border: 1px solid #30363d; color: #e6edf3; }
+  .msg { font-size: 12px; margin-top: 10px; padding: 8px 10px; border-radius: 6px; display: none; }
+  .msg.ok { display: block; background: #122d1c; color: #3fb950; border: 1px solid #1f6f3a; }
+  .msg.err { display: block; background: #3d1418; color: #f85149; border: 1px solid #6e2b2e; }
+  .msg.info { display: block; background: #122230; color: #58a6ff; border: 1px solid #1f4f6f; }
+  .test-msg { display: inline-block; font-size: 12px; margin-left: 14px; padding: 3px 10px; border-radius: 6px; vertical-align: middle; }
+  .test-msg.ok { background: #122d1c; color: #3fb950; border: 1px solid #1f6f3a; }
+  .test-msg.err { background: #3d1418; color: #f85149; border: 1px solid #6e2b2e; }
+  .test-msg.run { background: #122230; color: #58a6ff; border: 1px solid #1f4f6f; }
+  .toolbar { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px; }
+  .toolbar > div { flex: 1; min-width: 160px; }
+  .toolbar button { margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #21262d; vertical-align: top; }
+  th { color: #8b949e; font-weight: 500; font-size: 12px; }
+  td.content { max-width: 420px; word-break: break-word; }
+  .tag { display: inline-block; background: #21262d; border: 1px solid #30363d; border-radius: 10px; padding: 1px 8px; font-size: 11px; margin: 1px 3px 1px 0; }
+  .actions { white-space: nowrap; }
+  .actions button { margin: 0; padding: 4px 9px; font-size: 12px; }
+  .muted { color: #8b949e; font-size: 12px; }
+  .hlink { color: #58a6ff; cursor: pointer; }
+  .hlink:hover { text-decoration: underline; }
+  .histbox { max-height: 240px; overflow: auto; border: 1px solid #30363d; border-radius: 6px; padding: 8px; margin-top: 4px; }
+  .histitem { padding: 6px 0; border-bottom: 1px solid #21262d; font-size: 12.5px; word-break: break-word; }
+  .histitem:last-child { border-bottom: none; }
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; }
+  .modal.show { display: flex; }
+  .modal .card { width: 560px; max-width: 92vw; }
+  .modal .actions-row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AI Memory 管理界面</h1>
+  <div class="status">
+    <span id="st-es"><span class="dot bad"></span>ES 未连接</span>
+    <span id="st-emb"><span class="dot warn"></span>向量未启用</span>
+  </div>
+</header>
+
+<div class="tabs">
+  <div class="tab active" data-pane="data">数据管理</div>
+  <div class="tab" data-pane="config">配置</div>
+  <div class="tab" data-pane="help">使用帮助</div>
+  <div class="tab" data-pane="graph">知识图谱</div>
+</div>
+
+<!-- 数据管理 -->
+<div class="pane active" id="pane-data">
+  <div class="toolbar">
+    <div><label>搜索内容 (留空=列出全部)</label><input id="q" placeholder="例如：会议记录" /></div>
+    <div style="flex:0 0 140px"><label>检索模式</label>
+      <select id="mode"><option value="keyword">关键词</option><option value="semantic">语义</option><option value="hybrid">混合</option></select></div>
+    <div style="flex:0 0 100px"><label>数量</label><input id="limit" type="number" value="50" /></div>
+    <div style="flex:0 0 150px"><label>起始时间 (from)</label><input id="from" type="date" /></div>
+    <div style="flex:0 0 150px"><label>结束时间 (to)</label><input id="to" type="date" /></div>
+    <div style="flex:0 0 auto"><button onclick="runSearch()">搜索</button></div>
+  </div>
+  <div id="data-msg"></div>
+  <table id="tbl">
+    <thead><tr><th>内容</th><th>项目</th><th>会话</th><th>标签</th><th>创建</th><th>更新</th><th>历史</th><th>分</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</div>
+
+<!-- 配置 -->
+<div class="pane" id="pane-config">
+  <div class="card">
+    <h3 style="margin-top:0">数据库 (Elasticsearch)</h3>
+    <div class="row">
+      <div><label>ES 地址</label><input id="c-es-url" /></div>
+      <div><label>索引名</label><input id="c-es-index" /></div>
+    </div>
+    <div class="row">
+      <div><label>用户名</label><input id="c-es-user" /></div>
+      <div><label>密码</label><input id="c-es-pwd" type="text" placeholder="ES 密码（明文显示）" /></div>
+    </div>
+    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('db')">测试 ES 连接</button><span id="t-db" class="test-msg"></span></div>
+    <h3>模型 API (嵌入/向量)</h3>
+    <p class="muted" style="margin:4px 0">嵌入支持本地（Ollama/llama-embed，API Key 留空）或云端（OpenAI 兼容 /v1/embeddings，填对应 Key）。</p>
+    <div class="row">
+      <div><label>Embedding 接口 URL</label><input id="c-emb-url" placeholder="http://127.0.0.1:11434/api/embed 或 https://api.openai.com/v1/embeddings" /></div>
+      <div><label>模型名</label><input id="c-emb-model" placeholder="nomic-embed-text 或 text-embedding-3-small" /></div>
+    </div>
+    <div><label>API Key（云端才填，本地留空）</label><input id="c-emb-key" type="password" placeholder="云端 Embedding 的 Bearer Token；本地 Ollama 留空" /></div>
+    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('embedding')">测试嵌入模型</button><span id="t-embedding" class="test-msg"></span></div>
+    <h3>记忆去重 / 合并</h3>
+    <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:12px 0 4px">
+      <input type="checkbox" id="c-dedup" style="width:auto" /> 启用记忆合并（相似内容自动合并，避免重复）
+    </label>
+    <div style="max-width:200px"><label>合并相似度阈值 (0.7~1.0)</label><input id="c-dedup-th" type="number" step="0.01" min="0.7" max="1.0" value="0.92" /></div>
+    <h3>时序感知</h3>
+    <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:12px 0 4px">
+      <input type="checkbox" id="c-recency" style="width:auto" /> 启用检索时效加权（越近的记忆得分越高）
+    </label>
+    <div style="max-width:200px"><label>时效半衰期 (天)</label><input id="c-recency-hl" type="number" step="1" min="1" value="30" /></div>
+    <div style="max-width:200px"><label>记忆过期天数 (0=不过期)</label><input id="c-expiry" type="number" step="1" min="0" value="0" /></div>
+    <div style="max-width:240px"><label>生命周期策略</label>
+      <select id="c-lifecycle"><option value="none">none（不自动过期）</option><option value="expire">expire（到期清理）</option></select></div>
+    <h3>自动捕获</h3>
+    <p class="muted" style="margin:4px 0">把原始对话/文本自动提炼成记忆。配 LLM 走智能提取，否则启发式按句切分去重入库。所有捕获项打 auto-captured 标签。</p>
+    <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:8px 0 4px">
+      <input type="checkbox" id="c-llm" style="width:auto" /> 启用 LLM 智能提取（需填写下方 chat 端点）
+    </label>
+    <p class="muted" style="margin:8px 0 4px">捕获 LLM 支持本地（Ollama，Key 留空）或云端（DeepSeek/OpenAI/硅基流动，填端点 + Key）。</p>
+    <div class="row">
+      <div><label>LLM 端点 (OpenAI 兼容 /v1/chat/completions)</label><input id="c-llm-url" placeholder="http://127.0.0.1:11434/v1/chat/completions 或 https://api.deepseek.com/v1/chat/completions" /></div>
+      <div><label>LLM 模型名</label><input id="c-llm-model" placeholder="minicpm5-1b 或云端模型 id" /></div>
+    </div>
+    <div><label>API Key（云端才填，本地留空）</label><input id="c-llm-key" type="password" placeholder="云端 chat 的 Bearer Token；本地 Ollama 留空" /></div>
+    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('llm')">测试捕获 LLM</button><span id="t-llm" class="test-msg"></span></div>
+    <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:12px 0 4px">
+      <input type="checkbox" id="c-watch" style="width:auto" /> 启用文件/目录监听（tail 新增内容自动捕获）
+    </label>
+    <div><label>监听路径（文件或目录，.log/.txt/.md/.jsonl）</label><input id="c-watch-path" placeholder="/var/log/app.log 或 /data/transcripts" /></div>
+    <div class="row">
+      <div style="max-width:220px"><label>启发式单条最小字符数</label><input id="c-min-chars" type="number" step="1" min="1" value="20" /></div>
+      <div style="max-width:220px"><label>单次最多入库条数</label><input id="c-max-per" type="number" step="1" min="1" value="20" /></div>
+    </div>
+    <div><label>关键词/正则白名单（留空=全部捕获）</label><input id="c-kw" placeholder="例如：决定|记住|偏好|规范" /></div>
+    <h3>知识图谱</h3>
+    <p class="muted" style="margin:4px 0">写入/编辑记忆时用 LLM 抽取实体与关系，存入 entities/relations，可在「知识图谱」页浏览。无 LLM 时不抽取。抽取质量取决于模型，minicpm5-1b 对嵌套图 schema 不稳定，建议 kg_model 用更强模型。</p>
+    <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:8px 0 4px">
+      <input type="checkbox" id="c-kg" style="width:auto" /> 启用知识图谱（抽取实体与关系）
+    </label>
+    <p class="muted" style="margin:8px 0 4px">图谱抽取可独立指向云端：填 kg_url + kg_api_key 即走云；留空则复用上面「自动捕获」的 LLM 端点（捕获与图谱可各自本地/云端）。</p>
+    <div class="row">
+      <div><label>图谱抽取模型 (kg_model，留空=同 LLM 模型)</label><input id="c-kg-model" placeholder="minicpm5-1b（建议更强模型如 qwen3.5:9b 或云端 deepseek）" /></div>
+      <div style="max-width:220px"><label>单条最大实体数</label><input id="c-kg-max" type="number" step="1" min="1" value="30" /></div>
+    </div>
+    <div class="row">
+      <div><label>图谱端点 kg_url（留空=复用捕获 LLM 端点）</label><input id="c-kg-url" placeholder="https://api.deepseek.com/v1/chat/completions（可选，独立云端）" /></div>
+      <div><label>图谱 API Key（留空=复用 LLM Key）</label><input id="c-kg-key" type="password" placeholder="可选；云端才填" /></div>
+    </div>
+    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('kg')">测试图谱抽取</button><span id="t-kg" class="test-msg"></span></div>
+    <div><label>实体同义词归一表 (JSON，alias→canonical，留空无)</label><textarea id="c-kg-syn" placeholder='{"李工":"小李","Aurora 项目":"Aurora"}'></textarea></div>
+    <button onclick="saveConfig()">保存并重启服务</button>
+    <button class="ghost" onclick="diagnose()">测试连接</button>
+    <div id="cfg-msg" class="msg"></div>
+    <p class="muted" style="margin-top:14px">保存后服务会自动重启（约十几秒），页面将自动重连。Embedding 接口需兼容 Ollama 的 <code>/api/embed</code> 格式（POST {model,input} → {embeddings}）或 OpenAI <code>/v1/embeddings</code>。</p>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <h3 style="margin-top:0">自动捕获测试</h3>
+    <p class="muted" style="margin:4px 0">粘贴一段对话/文本，调用 POST /api/capture 即时提炼成记忆（不依赖配置开关也能试）。</p>
+    <div class="row">
+      <div><label>用户</label><input id="cap-user" placeholder="auto" /></div>
+      <div><label>项目</label><input id="cap-project" placeholder="capture_test" /></div>
+      <div><label>附加标签 (逗号分隔)</label><input id="cap-tags" placeholder="demo" /></div>
+    </div>
+    <label>待捕获文本</label><textarea id="cap-text" placeholder="把要提炼的对话或笔记粘到这里，每行一句最佳。"></textarea>
+    <button onclick="runCapture()">捕获</button>
+    <div id="cap-msg" class="msg"></div>
+    <div id="cap-result" class="muted" style="margin-top:8px;white-space:pre-wrap"></div>
+  </div>
+</div>
+
+<!-- 使用帮助 -->
+<div class="pane" id="pane-help">
+  <div id="docs" class="card" style="max-width:880px">加载中…</div>
+</div>
+
+<!-- 知识图谱 -->
+<div class="pane" id="pane-graph">
+  <div class="card" style="max-width:100%">
+    <h3 style="margin-top:0">知识图谱浏览</h3>
+    <p class="muted" style="margin:4px 0">输入一个实体名（如项目、人名、系统），展开它的关系网络。点击节点可继续扩展邻域。需 kg_enabled 且已有抽取数据。</p>
+    <div class="toolbar">
+      <div style="flex:0 0 320px"><label>实体名</label><input id="g-seed" placeholder="例如：Aurora / 小李" /></div>
+      <div style="flex:0 0 auto"><button onclick="gExpand()">展开图谱</button></div>
+      <div style="flex:0 0 auto"><button class="ghost" onclick="gReset()">清空</button></div>
+    </div>
+    <div id="g-msg" class="muted" style="margin:6px 0"></div>
+    <svg id="g-svg" style="width:100%;height:520px;background:#0d1117;border:1px solid #30363d;border-radius:8px"></svg>
+    <div id="g-legend" class="muted" style="margin-top:6px"></div>
+  </div>
+</div>
+
+<!-- 编辑弹窗 -->
+<div class="modal" id="edit-modal">
+  <div class="card">
+    <h3 style="margin-top:0">编辑记忆</h3>
+    <label>内容</label><textarea id="e-content"></textarea>
+    <label>项目</label><input id="e-project" />
+    <label>标签 (逗号分隔)</label><input id="e-tags" />
+    <div id="e-history"></div>
+    <div class="actions-row">
+      <button class="ghost" onclick="closeEdit()">取消</button>
+      <button onclick="submitEdit()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 历史弹窗 -->
+<div class="modal" id="hist-modal">
+  <div class="card">
+    <h3 style="margin-top:0">历史版本</h3>
+    <div id="hist-body"></div>
+    <div class="actions-row">
+      <button class="ghost" onclick="closeHist()">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+let editingId = null;
+
+// tabs
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.pane').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  $('#pane-' + t.dataset.pane).classList.add('active');
+  if (t.dataset.pane === 'config') loadConfig();
+  if (t.dataset.pane === 'help') loadDocs();
+});
+
+function setStatus(h) {
+  const es = $('#st-es'), emb = $('#st-emb');
+  if (h.es_connected) { es.innerHTML = '<span class="dot ok"></span>ES 已连接'; }
+  else { es.innerHTML = '<span class="dot bad"></span>ES 未连接'; }
+  if (h.config && h.config.embedding_enabled) { emb.innerHTML = '<span class="dot ok"></span>向量已启用'; }
+  else { emb.innerHTML = '<span class="dot warn"></span>向量未启用'; }
+}
+
+async function health() {
+  try { const r = await fetch('/api/health'); const j = await r.json(); setStatus(j); return j; }
+  catch (e) { $('#st-es').innerHTML = '<span class="dot bad"></span>服务离线'; return null; }
+}
+setInterval(health, 8000); health();
+
+function showMsg(el, text, cls) {
+  const m = $(el); m.textContent = text; m.className = 'msg ' + cls;
+}
+
+async function runSearch() {
+  const q = $('#q').value.trim();
+  const mode = $('#mode').value;
+  const limit = $('#limit').value;
+  const from = $('#from').value, to = $('#to').value;
+  let url = '/api/memories?limit=' + encodeURIComponent(limit) + '&mode=' + encodeURIComponent(mode);
+  if (q) url += '&q=' + encodeURIComponent(q);
+  if (from) url += '&from=' + encodeURIComponent(from);
+  if (to) url += '&to=' + encodeURIComponent(to);
+  showMsg('#data-msg', '查询中…', 'info');
+  try {
+    const r = await fetch(url); const j = await r.json();
+    const tb = $('#tbl tbody'); tb.innerHTML = '';
+    if (!j.rows || !j.rows.length) { showMsg('#data-msg', '无结果', 'info'); return; }
+    showMsg('#data-msg', '共 ' + j.rows.length + ' 条', 'ok');
+    j.rows.forEach(rw => {
+      const tr = document.createElement('tr');
+      const tags = (rw.tags || []).map(t => '<span class="tag">' + esc(t) + '</span>').join('');
+      const created = (rw.created_at||'').replace('T',' ').slice(0,19);
+      const updated = (rw.updated_at||'').replace('T',' ').slice(0,19);
+      const histCell = (rw.history && rw.history.length) ? '<a class="hlink" onclick="showHistory(\'' + rw.id + '\')">' + rw.history.length + ' 版</a>' : '-';
+      tr.innerHTML = '<td class="content">' + esc(rw.content) + '</td>' +
+        '<td>' + esc(rw.project || '-') + '</td><td>' + esc(rw.session || '-') + '</td>' +
+        '<td>' + tags + '</td>' +
+        '<td class="muted">' + esc(created) + '</td>' +
+        '<td class="muted">' + esc(updated) + '</td>' +
+        '<td>' + histCell + '</td>' +
+        '<td class="muted">' + (rw.score!=null?rw.score.toFixed(2):'-') + '</td>' +
+        '<td class="actions"><button class="ghost" onclick="openEdit(\'' + rw.id + '\')">编辑</button> ' +
+        '<button class="danger" onclick="del(\'' + rw.id + '\')">删除</button></td>';
+      tb.appendChild(tr);
+    });
+  } catch (e) { showMsg('#data-msg', '查询失败: ' + e.message, 'err'); }
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+async function del(id) {
+  if (!confirm('确认删除该记忆？')) return;
+  const r = await fetch('/api/memories/' + encodeURIComponent(id), { method: 'DELETE' });
+  if (r.ok) runSearch(); else alert('删除失败');
+}
+
+async function loadConfig() {
+  const r = await fetch('/api/config'); const c = await r.json();
+  $('#c-es-url').value = c.es_url || ''; $('#c-es-index').value = c.es_index || '';
+  $('#c-es-user').value = c.es_user || ''; $('#c-es-pwd').value = c.es_pwd || '';
+  $('#c-emb-url').value = c.embedding_url || ''; $('#c-emb-model').value = c.embedding_model || '';
+  $('#c-emb-key').value = c.embedding_api_key ? '******' : '';
+  $('#c-dedup').checked = (c.dedup_enabled !== false);
+  $('#c-dedup-th').value = (c.dedup_threshold !== undefined) ? c.dedup_threshold : 0.92;
+  $('#c-recency').checked = (c.recency_enabled !== false);
+  $('#c-recency-hl').value = (c.recency_half_life != null) ? c.recency_half_life : 30;
+  $('#c-expiry').value = (c.expiry_days != null) ? c.expiry_days : 0;
+  $('#c-lifecycle').value = c.lifecycle_policy || 'none';
+  $('#c-llm').checked = (c.llm_enabled === true);
+  $('#c-llm-url').value = c.llm_url || '';
+  $('#c-llm-model').value = c.llm_model || 'minicpm5-1b';
+  $('#c-llm-key').value = c.llm_api_key ? '******' : '';
+  $('#c-watch').checked = (c.capture_watch_enabled === true);
+  $('#c-watch-path').value = c.capture_watch_path || '';
+  $('#c-min-chars').value = (c.capture_min_chars != null) ? c.capture_min_chars : 20;
+  $('#c-max-per').value = (c.capture_max_per_call != null) ? c.capture_max_per_call : 20;
+  $('#c-kw').value = c.capture_keywords || '';
+  $('#c-kg').checked = (c.kg_enabled === true);
+  $('#c-kg-model').value = c.kg_model || '';
+  $('#c-kg-url').value = c.kg_url || '';
+  $('#c-kg-key').value = c.kg_api_key ? '******' : '';
+  $('#c-kg-max').value = (c.kg_max_entities != null) ? c.kg_max_entities : 30;
+  $('#c-kg-syn').value = (c.kg_synonyms && Object.keys(c.kg_synonyms).length) ? JSON.stringify(c.kg_synonyms) : '';
+}
+
+async function saveConfig() {
+  const body = {
+    es_url: $('#c-es-url').value, es_index: $('#c-es-index').value,
+    es_user: $('#c-es-user').value, es_pwd: $('#c-es-pwd').value,
+    embedding_url: $('#c-emb-url').value, embedding_model: $('#c-emb-model').value,
+    embedding_api_key: $('#c-emb-key').value,
+    dedup_enabled: $('#c-dedup').checked,
+    dedup_threshold: parseFloat($('#c-dedup-th').value) || 0.92,
+    recency_enabled: $('#c-recency').checked,
+    recency_half_life: parseInt($('#c-recency-hl').value) || 30,
+    expiry_days: parseInt($('#c-expiry').value) || 0,
+    lifecycle_policy: $('#c-lifecycle').value,
+    llm_enabled: $('#c-llm').checked,
+    llm_url: $('#c-llm-url').value,
+    llm_model: $('#c-llm-model').value,
+    llm_api_key: $('#c-llm-key').value,
+    capture_watch_enabled: $('#c-watch').checked,
+    capture_watch_path: $('#c-watch-path').value,
+    capture_min_chars: parseInt($('#c-min-chars').value) || 20,
+    capture_keywords: $('#c-kw').value,
+    capture_max_per_call: parseInt($('#c-max-per').value) || 20,
+    kg_enabled: $('#c-kg').checked,
+    kg_model: $('#c-kg-model').value.trim(),
+    kg_url: $('#c-kg-url').value.trim(),
+    kg_api_key: $('#c-kg-key').value,
+    kg_max_entities: parseInt($('#c-kg-max').value) || 30,
+    kg_synonyms: (() => { try { const v = $('#c-kg-syn').value.trim(); return v ? JSON.parse(v) : {}; } catch (e) { return {}; } })()
+  };
+  showMsg('#cfg-msg', '保存中，即将重启服务…', 'info');
+  const r = await fetch('/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (j.ok && j.restarting) {
+    showMsg('#cfg-msg', '配置已保存，服务重启中（页面将自动重连）…', 'info');
+    // 轮询等待恢复
+    let tries = 0;
+    const iv = setInterval(async () => {
+      tries++;
+      const h = await health();
+      if (h && h.es_connected) { clearInterval(iv); showMsg('#cfg-msg', '✅ 服务已重启，配置生效。', 'ok'); }
+      else if (tries > 20) { clearInterval(iv); showMsg('#cfg-msg', '重启较慢，请稍后刷新页面确认。', 'info'); }
+    }, 1500);
+  } else { showMsg('#cfg-msg', '保存失败', 'err'); }
+}
+
+async function testBackend(type) {
+  const status = document.getElementById('t-' + type);
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  status.textContent = '测试中…'; status.className = 'test-msg run';
+  const body = { type };
+  if (type === 'embedding') {
+    body.embedding_url = val('c-emb-url'); body.embedding_model = val('c-emb-model');
+    const k = val('c-emb-key'); if (k && k !== '******') body.embedding_api_key = k;
+  } else if (type === 'llm') {
+    body.llm_url = val('c-llm-url'); body.llm_model = val('c-llm-model');
+    const k = val('c-llm-key'); if (k && k !== '******') body.llm_api_key = k;
+  } else if (type === 'kg') {
+    body.kg_url = val('c-kg-url'); body.kg_model = val('c-kg-model');
+    body.llm_url = val('c-llm-url'); body.llm_model = val('c-llm-model');
+    const k = val('c-kg-key'); if (k && k !== '******') body.kg_api_key = k;
+    const lk = val('c-llm-key'); if (lk && lk !== '******') body.llm_api_key = lk;
+  } else if (type === 'db') {
+    body.es_url = val('c-es-url'); body.es_index = val('c-es-index');
+    body.es_user = val('c-es-user');
+    const p = val('c-es-pwd'); if (p) body.es_pwd = p;
+  }
+  try {
+    const r = await fetch('/api/test-backend', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const d = await r.json();
+    status.textContent = (d.ok ? '✅ ' : '❌ ') + (d.message || '') + (d.detail ? ('  — ' + d.detail) : '');
+    status.className = 'test-msg ' + (d.ok ? 'ok' : 'err');
+  } catch (e) {
+    status.textContent = '❌ 请求失败：' + e.message;
+    status.className = 'test-msg err';
+  }
+}
+
+async function runCapture() {
+  const text = $('#cap-text').value.trim();
+  if (!text) { showMsg('#cap-msg', '请先粘贴待捕获文本', 'err'); return; }
+  const tags = $('#cap-tags').value.split(',').map(s => s.trim()).filter(Boolean);
+  const body = { text, user: $('#cap-user').value || 'auto', project: $('#cap-project').value || 'capture_test', tags };
+  showMsg('#cap-msg', '捕获中…', 'info');
+  try {
+    const r = await fetch('/api/capture', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (!r.ok) { showMsg('#cap-msg', '捕获失败: ' + JSON.stringify(j), 'err'); return; }
+    showMsg('#cap-msg', '已捕获 ' + (j.captured||0) + ' 条，跳过 ' + (j.skipped||0) + ' 条（模式：' + (j.mode||'?') + '）', 'ok');
+    const items = (j.items||[]).map(it => '• ' + (it.merged ? '[合并] ' : '') + it.content).join('\n');
+    $('#cap-result').textContent = items || '（无）';
+  } catch (e) { showMsg('#cap-msg', '捕获出错: ' + e.message, 'err'); }
+}
+
+async function diagnose() {
+  showMsg('#cfg-msg', '正在测试 ES 与 Embedding 连接…', 'info');
+  try {
+    const r = await fetch('/api/diagnose', { method: 'POST' });
+    const j = await r.json();
+    const es = j.es || {}, emb = j.embedding || {};
+    const esTxt = es.ok ? ('ES ✅ 已连接（索引 ' + es.index + '，文档数 ' + es.docs + '）') : ('ES ❌ ' + (es.error || '未连接'));
+    const embTxt = emb.ok ? ('Embedding ✅ 模型 ' + emb.model + '，维度 ' + emb.dims + '，耗时 ' + emb.ms + 'ms') : ('Embedding ❌ ' + (emb.error || emb.reason || '不可用'));
+    showMsg('#cfg-msg', esTxt + '　|　' + embTxt, 'ok');
+  } catch (e) { showMsg('#cfg-msg', '测试失败: ' + e, 'err'); }
+}
+
+async function openEdit(id) {
+  editingId = id;
+  const r = await fetch('/api/memories/' + encodeURIComponent(id));
+  const j = await r.json();
+  $('#e-content').value = j.content || ''; $('#e-project').value = j.project || '';
+  $('#e-tags').value = (j.tags || []).join(', ');
+  const hist = j.history || [];
+  $('#e-history').innerHTML = hist.length ? ('<label>历史版本</label><div class="histbox">' +
+    hist.slice().reverse().map(h => '<div class="histitem"><span class="muted">' + esc((h.at||'').replace('T',' ').slice(0,19)) + '</span> ' + esc(h.content) + '</div>').join('') +
+    '</div>') : '';
+  $('#edit-modal').classList.add('show');
+}
+function closeEdit() { $('#edit-modal').classList.remove('show'); editingId = null; }
+
+async function submitEdit() {
+  const body = {
+    content: $('#e-content').value,
+    project: $('#e-project').value,
+    tags: $('#e-tags').value.split(',').map(s => s.trim()).filter(Boolean)
+  };
+  const r = await fetch('/api/memories/' + encodeURIComponent(editingId),
+    { method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  if (r.ok) { closeEdit(); runSearch(); } else alert('保存失败');
+}
+
+async function showHistory(id) {
+  try {
+    const r = await fetch('/api/memories/' + encodeURIComponent(id));
+    const j = await r.json();
+    const hist = j.history || [];
+    $('#hist-body').innerHTML = hist.length ? hist.slice().reverse().map(h => '<div class="histitem"><span class="muted">' + esc((h.at||'').replace('T',' ').slice(0,19)) + '</span> ' + esc(h.content) + '</div>').join('') : '<p class="muted">暂无历史版本</p>';
+    $('#hist-modal').classList.add('show');
+  } catch (e) { alert('读取历史失败'); }
+}
+function closeHist() { $('#hist-modal').classList.remove('show'); }
+
+async function loadDocs() {
+  const box = $('#docs');
+  try {
+    const r = await fetch('/api/docs'); const d = await r.json();
+    const toolRows = (d.tools || []).map(t => {
+      const params = Object.entries(t.inputSchema.properties || {}).map(([k, v]) => {
+        const req = (t.inputSchema.required || []).includes(k) ? ' <span style="color:#f85149">*</span>' : '';
+        const en = v.enum ? ' enum=' + JSON.stringify(v.enum) : '';
+        return '<li><code>' + esc(k) + '</code> (' + esc(v.type) + en + ')' + req + (v.description ? ' — ' + esc(v.description) : '') + '</li>';
+      }).join('');
+      return '<div style="margin-bottom:14px"><b>' + esc(t.name) + '</b> <span class="muted">' + esc(t.description || '') + '</span>'
+        + '<ul style="margin:4px 0 0 18px;color:#c9d1d9;font-size:12.5px">' + (params || '<li class="muted">无参数</li>') + '</ul></div>';
+    }).join('');
+    const apiRows = (d.rest_api || []).map(a =>
+      '<tr><td><code>' + esc(a.method) + '</code></td><td><code>' + esc(a.path) + '</code></td><td>' + esc(a.desc) + '</td></tr>').join('');
+    const cfgRows = (d.config_fields || []).map(c =>
+      '<tr><td><code>' + esc(c.key) + '</code></td><td>' + esc(c.desc) + '</td></tr>').join('');
+    const modeRows = (d.search_modes || []).map(m =>
+      '<tr><td><code>' + esc(m.mode) + '</code></td><td>' + esc(m.desc) + '</td></tr>').join('');
+    const notes = (d.notes || []).map(n => '<li>' + esc(n) + '</li>').join('');
+    box.innerHTML =
+      '<h3 style="margin-top:0">AI Memory 使用帮助</h3>'
+      + '<p class="muted">服务版本 v' + esc(d.server_version || '?') + '</p>'
+      + '<p>' + esc(d.overview || '') + '</p>'
+      + '<p class="muted"><b>传输方式：</b>' + esc(d.transport || '') + '</p>'
+      + '<h3>MCP 工具接口</h3><div>' + toolRows + '</div>'
+      + '<h3>REST API（供本管理界面/脚本调用）</h3>'
+      + '<table><thead><tr><th>方法</th><th>路径</th><th>说明</th></tr></thead><tbody>' + apiRows + '</tbody></table>'
+      + '<h3>配置项说明</h3>'
+      + '<table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody>' + cfgRows + '</tbody></table>'
+      + '<h3>检索模式</h3>'
+      + '<table><thead><tr><th>模式</th><th>说明</th></tr></thead><tbody>' + modeRows + '</tbody></table>'
+      + '<h3>部署架构</h3><p class="muted">' + esc(d.architecture || '') + '</p>'
+      + '<h3>注意事项</h3><ul style="color:#c9d1d9;font-size:12.5px">' + notes + '</ul>';
+  } catch (e) { box.innerHTML = '帮助加载失败: ' + esc(e.message); }
+}
+
+// ---- 知识图谱（原生力导向，无外部依赖） ----
+let gNodes = new Map(), gLinks = new Map();
+function gReset(){ gNodes.clear(); gLinks.clear(); $('#g-msg').textContent=''; const s=$('#g-svg'); if(s) s.innerHTML=''; $('#g-legend').textContent=''; }
+function gAttr(s){ return esc(s).replace(/'/g, "\\'"); }
+async function gExpand(){
+  const ent = $('#g-seed').value.trim();
+  if(!ent){ $('#g-msg').textContent='请输入实体名'; return; }
+  $('#g-msg').textContent='加载中…';
+  try{
+    const r = await fetch('/api/graph?entity='+encodeURIComponent(ent)+'&limit=100');
+    const j = await r.json();
+    if(!j.memories || !j.memories.length){ $('#g-msg').textContent='未找到包含「'+ent+'」的记忆或图谱数据'; return; }
+    gIngest(j); gSimulate();
+    $('#g-msg').textContent='节点 '+gNodes.size+'，关系 '+gLinks.size+'（来源记忆 '+j.memories.length+'）';
+  }catch(e){ $('#g-msg').textContent='加载失败: '+e.message; }
+}
+function gIngest(j){
+  for(const m of (j.memories||[])){
+    for(const e of (m.entities||[])){ const id=e.canonical||e.name; if(!gNodes.has(id)) gNodes.set(id,{id,label:e.name,type:e.type||'other',source:m.source}); }
+    for(const r of (m.relations||[])){ const key=r.from+'|'+r.to+'|'+r.type; if(!gLinks.has(key)) gLinks.set(key,{source:r.from,target:r.to,type:r.type}); }
+  }
+}
+function gSimulate(){
+  const nodes=[...gNodes.values()]; const links=[...gLinks.values()];
+  const W=800,H=520;
+  nodes.forEach((n,i)=>{ if(n.x==null){ n.x=W/2+Math.cos(i)*140+(Math.random()*20-10); n.y=H/2+Math.sin(i)*140+(Math.random()*20-10); n.vx=0;n.vy=0; }});
+  const lm=links.map(l=>({s:gNodes.get(l.source),t:gNodes.get(l.target),type:l.type})).filter(l=>l.s&&l.t);
+  for(let it=0; it<400; it++){
+    for(let a=0;a<nodes.length;a++){ for(let b=a+1;b<nodes.length;b++){
+      const na=nodes[a],nb=nodes[b]; let dx=na.x-nb.x, dy=na.y-nb.y; let d2=dx*dx+dy*dy+0.01; let d=Math.sqrt(d2);
+      const f=900/d2; const fx=f*dx/d, fy=f*dy/d; na.vx+=fx;na.vy+=fy;nb.vx-=fx;nb.vy-=fy;
+    }}
+    for(const l of lm){ const s=l.s,t=l.t; let dx=t.x-s.x,dy=t.y-s.y; let d=Math.sqrt(dx*dx+dy*dy+0.01); const f=(d-95)*0.02; const fx=f*dx/d,fy=f*dy/d; s.vx+=fx;s.vy+=fy;t.vx-=fx;t.vy-=fy; }
+    for(const n of nodes){ n.vx+=(W/2-n.x)*0.006; n.vy+=(H/2-n.y)*0.006; n.vx*=0.85;n.vy*=0.85; n.x+=n.vx;n.y+=n.vy;
+      n.x=Math.max(34,Math.min(W-34,n.x)); n.y=Math.max(22,Math.min(H-22,n.y)); }
+  }
+  gDraw(lm);
+}
+function gDraw(lm){
+  const svg=$('#g-svg'); const W=800,H=520;
+  const color={'person':'#58a6ff','project':'#3fb950','system':'#d29922','file':'#bc8cff','concept':'#f778ba','org':'#ff7b72','decision':'#39c5cf','other':'#8b949e'};
+  let h='';
+  for(const l of lm){ h+='<line x1="'+l.s.x.toFixed(1)+'" y1="'+l.s.y.toFixed(1)+'" x2="'+l.t.x.toFixed(1)+'" y2="'+l.t.y.toFixed(1)+'" stroke="#30363d" stroke-width="1.5"><title>'+esc(l.type)+'</title></line>'; }
+  for(const n of gNodes.values()){ const c=color[n.type]||'#8b949e'; const tip=(n.source&&n.source.ref)?(esc(n.label)+' | 来源: '+esc(n.source.ref)):esc(n.label);
+    h+='<g style="cursor:pointer" onclick="gClick(\''+gAttr(n.id)+'\')"><circle cx="'+n.x.toFixed(1)+'" cy="'+n.y.toFixed(1)+'" r="9" fill="'+c+'"><title>'+tip+'</title></circle>'+
+       '<text x="'+(n.x+12).toFixed(1)+'" y="'+(n.y+4).toFixed(1)+'" fill="#e6edf3" font-size="12">'+esc(n.label)+'</text></g>'; }
+  svg.setAttribute('viewBox','0 0 '+W+' '+H); svg.innerHTML=h;
+  const used=[...new Set([...gNodes.values()].map(n=>n.type))];
+  $('#g-legend').innerHTML='类型：'+used.map(t=>'<span style="color:'+(color[t]||'#8b949e')+'">●</span> '+t).join('　');
+}
+async function gClick(id){ $('#g-seed').value=id; await gExpand(); }
+
+// 初始
+runSearch();
+</script>
+</body>
+</html>

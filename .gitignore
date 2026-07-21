@@ -1,0 +1,8 @@
+# 运行时生成（降级库 / 监听偏移 / 备份）
+memories.db
+.capture.offsets.json
+*.bak
+*.log
+node_modules/
+.env
+.DS_Store

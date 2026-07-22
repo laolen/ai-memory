@@ -837,14 +837,14 @@ async function reconcileFact(fact, scope) {
     }
     const patch = { content: fact.statement, tags: Array.from(new Set([...(hit.source.tags || []), ...baseTags])),
       updated_at: new Date().toISOString(), type: fact.type, category: fact.category || 'semantic', confidence: fact.confidence, expires_at,
-      source: scope.source || null };
+      source: scope.source || null, fact_entities: fact.entities || [] };
     await doUpdate(hit.id, patch);
     return { action: 'updated', id: hit.id };
   }
   const appended = ((hit.source.content || '') + ' ' + fact.statement).trim();
   const patch = { content: appended, tags: Array.from(new Set([...(hit.source.tags || []), ...baseTags])),
     updated_at: new Date().toISOString(), type: fact.type, category: fact.category || 'semantic', confidence: Math.max(fact.confidence, hit.source.confidence || 0),
-    expires_at: expires_at || hit.source.expires_at || null, source: scope.source || null };
+    expires_at: expires_at || hit.source.expires_at || null, source: scope.source || null, fact_entities: fact.entities || [] };
   await doUpdate(hit.id, patch);
   return { action: 'supplemented', id: hit.id };
 }
@@ -988,7 +988,8 @@ async function doAdd(a) {
         project: a.project || null,
         session: a.session || null,
         tags: mergedTags,
-        updated_at: now
+        updated_at: now,
+        fact_entities: a.fact_entities
       };
       const updated = await doUpdate(hit.id, patch);
       return { id: hit.id, merged: true, merged_from: hit.id, similarity: hit.similarity, ...updated };
@@ -1105,7 +1106,19 @@ async function doUpdate(id, patch) {
       try { const v = await embed(patch.content); sets.push('embedding=?'); params.push(JSON.stringify(v)); } catch (e) {}
     }
     if (CONFIG.kg_enabled && patch.content !== undefined) {
-      try { const g = await extractGraph(patch.content); sets.push('entities=?'); params.push(JSON.stringify(g.entities)); sets.push('relations=?'); params.push(JSON.stringify(g.relations)); sets.push('entity_names=?'); params.push(JSON.stringify(g.entity_names || [])); } catch (e) {}
+      let gEntities = null, gRelations = null, gNames = [];
+      try { const g = await extractGraph(patch.content); gEntities = g.entities; gRelations = g.relations; gNames = g.entity_names || []; } catch (e) {}
+      // v1.5.3: 若 KG 抽取（extractGraph）未得到实体，用事实抽取阶段的 fact_entities 兜底（与 doAdd 一致）
+      if ((!gNames || gNames.length === 0) && Array.isArray(patch.fact_entities) && patch.fact_entities.length) {
+        const names = patch.fact_entities.map(e => (typeof e === 'string' ? e : (e && (e.name || e.canonical)))).filter(Boolean).map(String).map(s => s.trim()).filter(Boolean);
+        if (names.length) {
+          gNames = Array.from(new Set(names));
+          if (!gEntities || gEntities.length === 0) gEntities = gNames.map(n => ({ type: 'other', name: n, canonical: n }));
+        }
+      }
+      sets.push('entities=?'); params.push(JSON.stringify(gEntities));
+      sets.push('relations=?'); params.push(JSON.stringify(gRelations));
+      sets.push('entity_names=?'); params.push(JSON.stringify(gNames || []));
     }
     if (patch.type !== undefined) { sets.push('type=?'); params.push(patch.type || null); }
     if (patch.category !== undefined) { sets.push('category=?'); params.push(patch.category || 'semantic'); }
@@ -1135,7 +1148,19 @@ async function doUpdate(id, patch) {
   if (patch.updated_at !== undefined) doc.updated_at = patch.updated_at;
   else doc.updated_at = now;
   if (CONFIG.embedding_url && patch.content !== undefined) { try { doc.embedding = await embed(patch.content); } catch (e) {} }
-  if (CONFIG.kg_enabled && patch.content !== undefined) { try { const g = await extractGraph(patch.content); doc.entities = g.entities; doc.relations = g.relations; doc.entity_names = g.entity_names || []; } catch (e) {} }
+  if (CONFIG.kg_enabled && patch.content !== undefined) {
+    let gEntities = null, gRelations = null, gNames = [];
+    try { const g = await extractGraph(patch.content); gEntities = g.entities; gRelations = g.relations; gNames = g.entity_names || []; } catch (e) {}
+    // v1.5.3: 若 KG 抽取（extractGraph）未得到实体，用事实抽取阶段的 fact_entities 兜底（与 doAdd 一致）
+    if ((!gNames || gNames.length === 0) && Array.isArray(patch.fact_entities) && patch.fact_entities.length) {
+      const names = patch.fact_entities.map(e => (typeof e === 'string' ? e : (e && (e.name || e.canonical)))).filter(Boolean).map(String).map(s => s.trim()).filter(Boolean);
+      if (names.length) {
+        gNames = Array.from(new Set(names));
+        if (!gEntities || gEntities.length === 0) gEntities = gNames.map(n => ({ type: 'other', name: n, canonical: n }));
+      }
+    }
+    doc.entities = gEntities; doc.relations = gRelations; doc.entity_names = gNames || [];
+  }
   if (patch.type !== undefined) doc.type = patch.type || null;
   if (patch.category !== undefined) doc.category = patch.category || 'semantic';
   if (patch.confidence !== undefined) doc.confidence = patch.confidence;
@@ -1156,7 +1181,7 @@ async function doUpdate(id, patch) {
 
 // ---- MCP server factory (one instance per SSE connection) ----
 function createServer() {
-  const server = new Server({ name: 'ai-memory', version: '1.5.2' }, { capabilities: { tools: {} } });
+  const server = new Server({ name: 'ai-memory', version: '1.5.3' }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
@@ -1214,7 +1239,7 @@ try { ADMIN_HTML = fs.readFileSync(path.join(__dirname, 'admin.html'), 'utf8'); 
 
 // ---- Docs (interface reference for admin help page; TOOLS reused so it stays in sync) ----
 const DOCS = {
-  server_version: '1.5.2',
+  server_version: '1.5.3',
   overview: 'AI Memory 是记忆体 MCP 服务：默认基于 Elasticsearch，当 es_url 留空时自动降级为本地 SQLite 文件库（memories.db），均无需额外部署即可运行。提供记忆的存储(add)、查询(search/list)、编辑、删除能力，支持关键词(BM25)、语义(kNN 向量)与混合(RRF 应用层融合)三种检索模式。本管理界面可管理记忆数据、配置数据库与嵌入模型。',
   transport: 'MCP 通过 SSE 暴露：客户端连接 GET /sse 建立会话，工具调用经 POST /message 转发(JSON-RPC 2.0)。',
   tools: TOOLS,

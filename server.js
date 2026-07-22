@@ -192,6 +192,13 @@ function sourceTypeOf(source) {
   if (source.type) return source.type;
   return 'human';
 }
+// v1.5.1: ES mapping 把 source 锁成 object 类型；捕获 API 传的是字符串（"human"），
+// 直接写 ES 会 document_parsing_exception。归一化：字符串 → {type}，对象原样，空 → null。
+function normalizeSource(s) {
+  if (!s) return null;
+  if (typeof s === 'string') return { type: s };
+  return s;
+}
 function sourceTrustFactor(source) {
   if (!CONFIG.source_trust_enabled) return 1;
   const w = CONFIG.source_trust_weights && CONFIG.source_trust_weights[sourceTypeOf(source)];
@@ -741,27 +748,44 @@ async function extractFacts(text) {
     const arr = Array.isArray(parsed.facts) ? parsed.facts : [];
     return arr.filter(x => x && x.statement).map(x => ({
       statement: String(x.statement),
-      type: x.type || 'project_fact',
+      type: (function (t) {
+        if (!t) return 'project_fact';
+        const s = String(t).trim();
+        const TM = { '人员角色': 'person', '人物': 'person', '人': 'person', '技术栈': 'tooling', '技术': 'tooling', '工具': 'tooling', '网络配置': 'project_fact', '网络': 'project_fact', '发布时间': 'temporal', '时间': 'temporal', '决定': 'decision', '决策': 'decision', '偏好': 'preference', '喜好': 'preference', '规范': 'convention', '约定': 'convention', '反模式': 'anti_pattern', '事实': 'project_fact' };
+        if (TM[s]) return TM[s];
+        const ft = (CONFIG.fact_types || []).map(String);
+        return ft.includes(s) ? s : s; // 未知标签原样保留（多为英文规范值）
+      })(x.type),
       category: ['semantic', 'episodic', 'procedural'].includes(x.category) ? x.category : 'semantic',
       entities: Array.isArray(x.entities) ? x.entities : [],
       confidence: Number(x.confidence) || 0.5,
-      scope: ['global', 'project', 'session'].includes(x.scope) ? x.scope : 'global',
+      scope: (function (s) {
+        const m = { global: 'global', '全局': 'global', project: 'project', '项目级': 'project', '项目': 'project', session: 'session', '会话级': 'session', '会话': 'session' };
+        return m[String(s || '').toLowerCase().trim()] || 'global';
+      })(x.scope),
       expires_in_days: (x.expires_in_days && Number(x.expires_in_days) > 0) ? Number(x.expires_in_days) : null
     }));
   } catch (e) { return null; }
 }
 
-// 关系判定：相同/矛盾/补充/无关
+// 关系判定：相同/矛盾/补充/无关（兼容 9b 等返回中文枚举的模型）
 async function judgeRelation(newText, oldDoc) {
   if (!CONFIG.llm_enabled || !CONFIG.llm_url) return 'same';
+  const REL_MAP = {
+    same: 'same', '相同': 'same', '等价': 'same', '重复': 'same', '一致': 'same',
+    contradict: 'contradict', '矛盾': 'contradict', '冲突': 'contradict',
+    supplement: 'supplement', '补充': 'supplement', '追加': 'supplement',
+    irrelevant: 'irrelevant', '无关': 'irrelevant', '不同': 'irrelevant', '不一样': 'irrelevant'
+  };
   const oldText = (oldDoc && oldDoc.content) || '';
-  const sys = 'Compare two memory statements. Classify their relationship as exactly one of: same (redundant/equivalent), contradict (new overrides old, they conflict), supplement (new adds compatible detail to old), irrelevant (similar wording but different meaning). Reply with ONLY JSON: {"relation":"same|contradict|supplement|irrelevant"}. No markdown.';
+  const sys = 'Compare two memory statements. Classify their relationship as exactly one of: same (redundant/equivalent), contradict (new overrides old, they conflict), supplement (new adds compatible detail to old), irrelevant (similar wording but different meaning). Reply with ONLY JSON: {"relation":"same|contradict|supplement|irrelevant"}. No markdown. Use the English keyword only.';
   try {
     const content = await chatJSON({ url: CONFIG.llm_url, model: CONFIG.llm_model, apiKey: CONFIG.llm_api_key || null,
       messages: [ { role: 'system', content: sys }, { role: 'user', content: 'OLD: ' + oldText + '\nNEW: ' + newText } ], temperature: 0.1, jsonMode: true });
     if (!content) return 'same';
     let p; try { p = JSON.parse(content); } catch (e) { return 'same'; }
-    return ['same', 'contradict', 'supplement', 'irrelevant'].includes(p.relation) ? p.relation : 'same';
+    const raw = (p && p.relation) ? String(p.relation).toLowerCase().trim() : '';
+    return REL_MAP[raw] || 'same';
   } catch (e) { return 'same'; }
 }
 
@@ -795,8 +819,14 @@ async function reconcileFact(fact, scope) {
     return { action: 'added', id: r.id };
   }
   const rel = await judgeRelation(fact.statement, hit.source);
-  if (rel === 'same' || rel === 'irrelevant') {
+  if (rel === 'same') {
     return { action: 'skipped_dup', id: hit.id };
+  }
+  if (rel === 'irrelevant') {
+    // v1.5.1: 不同含义（仅字面相近）→ 作为新记忆独立保留，避免松匹配误杀
+    const r = await doAdd({ content: fact.statement, user: sUser, project: sProject, session: sSession,
+      tags: baseTags, source: scope.source || null, ...meta });
+    return { action: 'added', id: r.id };
   }
   if (rel === 'contradict') {
     if (CONFIG.preserve_on_conflict) {
@@ -924,7 +954,7 @@ async function doAdd(a) {
     access_count: 0,
     last_accessed_at: now,
     expires_at: a.expires_at || null,
-    source: a.source || null
+    source: normalizeSource(a.source)
   };
   // v1.5.0: session 级记忆自动过期（session_ttl_hours>0 且未显式设 expires_at 时）
   if (a.session && !a.expires_at && CONFIG.session_ttl_hours > 0) {
@@ -1099,7 +1129,7 @@ async function doUpdate(id, patch) {
   if (patch.access_count !== undefined) doc.access_count = patch.access_count;
   if (patch.last_accessed_at !== undefined) doc.last_accessed_at = patch.last_accessed_at;
   if (patch.expires_at !== undefined) doc.expires_at = patch.expires_at || null;
-  if (patch.source !== undefined) doc.source = patch.source || null;
+  if (patch.source !== undefined) doc.source = normalizeSource(patch.source);
   const prevHistory = (prev.history || []);
   if (patch.content !== undefined && patch.content !== prev.content) {
     const hist = prevHistory.slice();
@@ -1113,7 +1143,7 @@ async function doUpdate(id, patch) {
 
 // ---- MCP server factory (one instance per SSE connection) ----
 function createServer() {
-  const server = new Server({ name: 'ai-memory', version: '1.5.0' }, { capabilities: { tools: {} } });
+  const server = new Server({ name: 'ai-memory', version: '1.5.1' }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
@@ -1171,7 +1201,7 @@ try { ADMIN_HTML = fs.readFileSync(path.join(__dirname, 'admin.html'), 'utf8'); 
 
 // ---- Docs (interface reference for admin help page; TOOLS reused so it stays in sync) ----
 const DOCS = {
-  server_version: '1.5.0',
+  server_version: '1.5.1',
   overview: 'AI Memory 是记忆体 MCP 服务：默认基于 Elasticsearch，当 es_url 留空时自动降级为本地 SQLite 文件库（memories.db），均无需额外部署即可运行。提供记忆的存储(add)、查询(search/list)、编辑、删除能力，支持关键词(BM25)、语义(kNN 向量)与混合(RRF 应用层融合)三种检索模式。本管理界面可管理记忆数据、配置数据库与嵌入模型。',
   transport: 'MCP 通过 SSE 暴露：客户端连接 GET /sse 建立会话，工具调用经 POST /message 转发(JSON-RPC 2.0)。',
   tools: TOOLS,

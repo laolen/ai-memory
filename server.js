@@ -739,7 +739,7 @@ async function shouldCapture(text) {
 async function extractFacts(text) {
   if (!CONFIG.llm_enabled || !CONFIG.llm_url) return null;
   const types = (CONFIG.fact_types && CONFIG.fact_types.length) ? CONFIG.fact_types.join(', ') : 'preference, decision, convention, project_fact';
-  const sys = 'You are a fact-extraction engine. From the given conversation/notes, extract durable ATOMIC facts worth remembering long-term (one fact per item, no compound sentences). For each fact provide: statement (one self-contained sentence), type (one of: ' + types + '), category (one of: semantic=durable fact/preference, episodic=specific event/decision in a context, procedural=how-to/workflow/communication style), entities (array of mentioned named entities), confidence (0-1), scope (global|project|session), expires_in_days (integer or null; null for durable facts, e.g. 90 for temporary decisions). Ignore chit-chat, greetings, ephemeral content. 重要：保持输入原文的【语言】，不要翻译（中文输入必须输出中文，英文输入输出英文）；实体/专有名词必须与原文逐字一致。 Respond with ONLY JSON: {"facts":[...]}. If nothing worth keeping, return {"facts":[]}. No markdown, no commentary.';
+  const sys = 'You are a fact-extraction engine. From the given conversation/notes, extract durable ATOMIC facts worth remembering long-term (one fact per item, no compound sentences). For each fact provide: statement (one self-contained sentence), type (one of: ' + types + '), category (one of: semantic=durable fact/preference, episodic=specific event/decision in a context, procedural=how-to/workflow/communication style), entities (REQUIRED — an array of EVERY named entity / proper noun that appears in this fact: people, organizations/companies, products, technologies/tools, systems, files, places, version numbers and dates. Copy each entity VERBATIM from the original text, preserving its exact wording and language. This array MUST NOT be empty whenever the statement contains any proper noun; only return an empty array for a fact that genuinely mentions no named entity), confidence (0-1), scope (global|project|session), expires_in_days (integer or null; null for durable facts, e.g. 90 for temporary decisions). Ignore chit-chat, greetings, ephemeral content. 重要：保持输入原文的【语言】，不要翻译（中文输入必须输出中文，英文输入输出英文）；实体/专有名词必须与原文逐字一致，不得翻译、缩写或改写。 示例：输入「周明远是青龙数据(QingLong) 的 CTO，2026 年负责把订单系统从 PostgreSQL 迁移到 TiDB」应抽出两条事实，其 entities 分别为 ["周明远","青龙数据","QingLong"] 与 ["周明远","订单系统","PostgreSQL","TiDB"]。 Respond with ONLY JSON: {"facts":[...]}. If nothing worth keeping, return {"facts":[]}. No markdown, no commentary.';
   try {
     const content = await chatJSON({ url: CONFIG.llm_url, model: CONFIG.llm_model, apiKey: CONFIG.llm_api_key || null,
       messages: [ { role: 'system', content: sys }, { role: 'user', content: 'Extract facts from:\n\n' + text } ], temperature: 0.2, jsonMode: true });
@@ -795,7 +795,7 @@ async function reconcileFact(fact, scope) {
   const now = new Date();
   const expires_at = fact.expires_in_days ? new Date(now.getTime() + fact.expires_in_days * 86400000).toISOString() : null;
   const baseTags = ['auto-captured'];
-  const meta = { type: fact.type, category: fact.category || 'semantic', confidence: fact.confidence, scope: fact.scope, expires_at };
+  const meta = { type: fact.type, category: fact.category || 'semantic', confidence: fact.confidence, scope: fact.scope, expires_at, fact_entities: fact.entities || [] };
   if (CONFIG.fact_confidence_threshold > 0 && fact.confidence < CONFIG.fact_confidence_threshold) {
     return { action: 'skipped_low_conf', id: null };
   }
@@ -962,6 +962,19 @@ async function doAdd(a) {
   }
   if (CONFIG.embedding_url) { try { doc.embedding = await embed(a.content); } catch (e) {} }
   await attachGraph(doc, a.content);
+  // v1.5.2: 若 KG 抽取（extractGraph）未得到实体，用事实抽取阶段的 fact_entities 兜底填 entity_names，
+  // 保证云端模型（如 deepseek-v4-flash/pro，KG 任务保守常留空）也能有实体用于检索加权与图谱起点。
+  if ((!doc.entity_names || doc.entity_names.length === 0) && Array.isArray(a.fact_entities) && a.fact_entities.length) {
+    const names = a.fact_entities
+      .map(e => (typeof e === 'string' ? e : (e && (e.name || e.canonical))))
+      .filter(Boolean).map(String).map(s => s.trim()).filter(Boolean);
+    if (names.length) {
+      doc.entity_names = Array.from(new Set(names));
+      if (!doc.entities || doc.entities.length === 0) {
+        doc.entities = doc.entity_names.map(n => ({ type: 'other', name: n, canonical: n }));
+      }
+    }
+  }
 
   // 记忆去重 / 合并：相似内容合并到已有记忆，避免重复条目
   const mergeAllowed = (a.merge !== undefined) ? a.merge : CONFIG.dedup_enabled;
@@ -1143,7 +1156,7 @@ async function doUpdate(id, patch) {
 
 // ---- MCP server factory (one instance per SSE connection) ----
 function createServer() {
-  const server = new Server({ name: 'ai-memory', version: '1.5.1' }, { capabilities: { tools: {} } });
+  const server = new Server({ name: 'ai-memory', version: '1.5.2' }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
@@ -1201,7 +1214,7 @@ try { ADMIN_HTML = fs.readFileSync(path.join(__dirname, 'admin.html'), 'utf8'); 
 
 // ---- Docs (interface reference for admin help page; TOOLS reused so it stays in sync) ----
 const DOCS = {
-  server_version: '1.5.1',
+  server_version: '1.5.2',
   overview: 'AI Memory 是记忆体 MCP 服务：默认基于 Elasticsearch，当 es_url 留空时自动降级为本地 SQLite 文件库（memories.db），均无需额外部署即可运行。提供记忆的存储(add)、查询(search/list)、编辑、删除能力，支持关键词(BM25)、语义(kNN 向量)与混合(RRF 应用层融合)三种检索模式。本管理界面可管理记忆数据、配置数据库与嵌入模型。',
   transport: 'MCP 通过 SSE 暴露：客户端连接 GET /sse 建立会话，工具调用经 POST /message 转发(JSON-RPC 2.0)。',
   tools: TOOLS,

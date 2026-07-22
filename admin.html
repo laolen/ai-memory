@@ -85,11 +85,12 @@
     <div style="flex:0 0 150px"><label>结束时间 (to)</label><input id="to" type="date" /></div>
     <div style="flex:0 0 160px"><label>事实类型 (type)</label><input id="ftype" placeholder="如 preference（留空=全部）" /></div>
     <div style="flex:0 0 130px"><label>最低置信度</label><input id="fconf" type="number" step="0.05" min="0" max="1" placeholder="0-1" /></div>
+    <div style="flex:0 0 160px"><label>分类 (category)</label><select id="fcat"><option value="">全部</option><option value="semantic">semantic</option><option value="episodic">episodic</option><option value="procedural">procedural</option></select></div>
     <div style="flex:0 0 auto"><button onclick="runSearch()">搜索</button></div>
   </div>
   <div id="data-msg"></div>
   <table id="tbl">
-    <thead><tr><th>内容</th><th>项目</th><th>会话</th><th>标签</th><th>类型</th><th>创建</th><th>更新</th><th>历史</th><th>分</th><th></th></tr></thead>
+    <thead><tr><th>内容</th><th>项目</th><th>会话</th><th>标签</th><th>类型</th><th>分类</th><th>创建</th><th>更新</th><th>历史</th><th>分</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </div>
@@ -161,6 +162,20 @@
         <div style="max-width:360px"><label>事实类型本体 (JSON 数组)</label><input id="c-fact-types" placeholder='["preference","decision","convention","project_fact","anti_pattern","person","tooling","temporal"]' /></div>
         <div style="max-width:200px"><label>最低置信度 (0-1)</label><input id="c-fact-conf" type="number" step="0.05" min="0" max="1" value="0.5" /></div>
       </div>
+    </div>
+    <div style="border:1px solid #1f4f6f;border-radius:8px;padding:10px;margin:10px 0;background:#0d1b26">
+      <div style="font-weight:600;color:#58a6ff;margin-bottom:6px">记忆分层与治理 (v1.5.0)</div>
+      <div class="row">
+        <div style="max-width:220px"><label>实体链接加权 (0-1)</label><input id="c-entity-boost" type="number" step="0.05" min="0" max="1" value="0.15" /></div>
+        <div style="max-width:220px"><label>Session 过期小时 (0=关)</label><input id="c-session-ttl" type="number" step="1" min="0" value="0" /></div>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:6px 0">
+        <input type="checkbox" id="c-source-trust" style="width:auto" /> 来源信任加权（human&gt;agent&gt;tool&gt;system，检索时排序）
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:6px 0">
+        <input type="checkbox" id="c-preserve-conflict" style="width:auto" /> 时序 ADD-only（冲突事实不覆盖旧值，新建并保留演变轨迹）
+      </label>
+      <div style="max-width:420px"><label>来源信任权重 (JSON)</label><input id="c-source-weights" placeholder='{"human":1.0,"agent":0.85,"tool":0.7,"system":0.6}' /></div>
     </div>
     <h3>知识图谱</h3>
     <p class="muted" style="margin:4px 0">写入/编辑记忆时用 LLM 抽取实体与关系，存入 entities/relations，可在「知识图谱」页浏览。无 LLM 时不抽取。抽取质量取决于模型，minicpm5-1b 对嵌套图 schema 不稳定，建议 kg_model 用更强模型。</p>
@@ -283,12 +298,13 @@ async function runSearch() {
   const mode = $('#mode').value;
   const limit = $('#limit').value;
   const from = $('#from').value, to = $('#to').value;
-  const ftype = $('#ftype').value.trim(), fconf = $('#fconf').value.trim();
+  const ftype = $('#ftype').value.trim(), fconf = $('#fconf').value.trim(), fcat = $('#fcat').value;
   let url = '/api/memories?limit=' + encodeURIComponent(limit) + '&mode=' + encodeURIComponent(mode);
   if (q) url += '&q=' + encodeURIComponent(q);
   if (from) url += '&from=' + encodeURIComponent(from);
   if (to) url += '&to=' + encodeURIComponent(to);
   if (ftype) url += '&type=' + encodeURIComponent(ftype);
+  if (fcat) url += '&category=' + encodeURIComponent(fcat);
   if (fconf) url += '&min_confidence=' + encodeURIComponent(fconf);
   showMsg('#data-msg', '查询中…', 'info');
   try {
@@ -306,6 +322,7 @@ async function runSearch() {
         '<td>' + esc(rw.project || '-') + '</td><td>' + esc(rw.session || '-') + '</td>' +
         '<td>' + tags + '</td>' +
         '<td>' + esc(rw.type || '-') + '</td>' +
+        '<td>' + esc(rw.category || 'semantic') + '</td>' +
         '<td class="muted">' + esc(created) + '</td>' +
         '<td class="muted">' + esc(updated) + '</td>' +
         '<td>' + histCell + '</td>' +
@@ -344,6 +361,11 @@ async function loadConfig() {
   $('#c-reconcile').checked = !!c.reconcile_enabled;
   $('#c-auto-filter').checked = !!c.auto_filter;
   $('#c-fact-types').value = Array.isArray(c.fact_types) ? JSON.stringify(c.fact_types) : '';
+  $('#c-entity-boost').value = (c.entity_link_boost != null) ? c.entity_link_boost : 0.15;
+  $('#c-session-ttl').value = (c.session_ttl_hours != null) ? c.session_ttl_hours : 0;
+  $('#c-source-trust').checked = (c.source_trust_enabled !== false);
+  $('#c-preserve-conflict').checked = !!c.preserve_on_conflict;
+  $('#c-source-weights').value = (c.source_trust_weights && typeof c.source_trust_weights === 'object') ? JSON.stringify(c.source_trust_weights) : '{"human":1.0,"agent":0.85,"tool":0.7,"system":0.6}';
   $('#c-fact-conf').value = (c.fact_confidence_threshold !== undefined) ? c.fact_confidence_threshold : 0.5;
   $('#c-watch').checked = (c.capture_watch_enabled === true);
   $('#c-watch-path').value = c.capture_watch_path || '';
@@ -386,6 +408,11 @@ async function saveConfig() {
     auto_filter: $('#c-auto-filter').checked,
     fact_confidence_threshold: Number($('#c-fact-conf').value) || 0.5,
     fact_types: (() => { try { return JSON.parse($('#c-fact-types').value || '[]'); } catch (e) { return []; } })(),
+    entity_link_boost: Number($('#c-entity-boost').value) || 0.15,
+    session_ttl_hours: parseInt($('#c-session-ttl').value) || 0,
+    source_trust_enabled: $('#c-source-trust').checked,
+    preserve_on_conflict: $('#c-preserve-conflict').checked,
+    source_trust_weights: (() => { try { return JSON.parse($('#c-source-weights').value || '{}'); } catch (e) { return {}; } })(),
     kg_api_key: $('#c-kg-key').value,
     kg_max_entities: parseInt($('#c-kg-max').value) || 30,
     kg_synonyms: (() => { try { const v = $('#c-kg-syn').value.trim(); return v ? JSON.parse(v) : {}; } catch (e) { return {}; } })()

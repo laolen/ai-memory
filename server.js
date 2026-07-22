@@ -33,11 +33,17 @@ function loadConfig() {
     llm_url: (f.llm_url !== undefined) ? f.llm_url : 'http://127.0.0.1:11434/v1/chat/completions',
     llm_model: f.llm_model || 'minicpm5-1b',
     llm_api_key: f.llm_api_key || process.env.LLM_API_KEY || '',
+    llm_timeout_ms: (f.llm_timeout_ms !== undefined) ? Number(f.llm_timeout_ms) : 90000,
+    embedding_timeout_ms: (f.embedding_timeout_ms !== undefined) ? Number(f.embedding_timeout_ms) : 30000,
     capture_watch_enabled: (f.capture_watch_enabled !== undefined) ? f.capture_watch_enabled : false,
     capture_watch_path: f.capture_watch_path || '',
     capture_min_chars: (f.capture_min_chars !== undefined) ? f.capture_min_chars : 20,
     capture_keywords: f.capture_keywords || '',
     capture_max_per_call: (f.capture_max_per_call !== undefined) ? f.capture_max_per_call : 20,
+    fact_types: Array.isArray(f.fact_types) ? f.fact_types : ['preference', 'decision', 'convention', 'project_fact', 'anti_pattern', 'person', 'tooling', 'temporal'],
+    auto_filter: (f.auto_filter !== undefined) ? f.auto_filter : false,
+    fact_confidence_threshold: (f.fact_confidence_threshold !== undefined) ? f.fact_confidence_threshold : 0.5,
+    reconcile_enabled: (f.reconcile_enabled !== undefined) ? f.reconcile_enabled : true,
     kg_enabled: (f.kg_enabled !== undefined) ? f.kg_enabled : false,
     kg_max_entities: (f.kg_max_entities !== undefined) ? f.kg_max_entities : 30,
     kg_synonyms: (f.kg_synonyms && typeof f.kg_synonyms === 'object') ? f.kg_synonyms : {},
@@ -73,6 +79,11 @@ function sqliteInit() {
   if (!_cols.has('relations')) db.exec('ALTER TABLE memories ADD COLUMN relations TEXT');
   if (!_cols.has('source')) db.exec('ALTER TABLE memories ADD COLUMN source TEXT');
   if (!_cols.has('entity_names')) db.exec('ALTER TABLE memories ADD COLUMN entity_names TEXT');
+  if (!_cols.has('type')) db.exec('ALTER TABLE memories ADD COLUMN type TEXT');
+  if (!_cols.has('confidence')) db.exec('ALTER TABLE memories ADD COLUMN confidence REAL');
+  if (!_cols.has('access_count')) db.exec('ALTER TABLE memories ADD COLUMN access_count INTEGER DEFAULT 0');
+  if (!_cols.has('last_accessed_at')) db.exec('ALTER TABLE memories ADD COLUMN last_accessed_at TEXT');
+  if (!_cols.has('expires_at')) db.exec('ALTER TABLE memories ADD COLUMN expires_at TEXT');
   return db;
 }
 function rowToDoc(r) {
@@ -80,16 +91,21 @@ function rowToDoc(r) {
     session: r.session, tags: r.tags ? JSON.parse(r.tags) : [], created_at: r.created_at,
     updated_at: r.updated_at || r.created_at, history: r.history ? JSON.parse(r.history) : [],
     entities: r.entities ? JSON.parse(r.entities) : [], relations: r.relations ? JSON.parse(r.relations) : [],
-    source: r.source ? JSON.parse(r.source) : null, entity_names: r.entity_names ? JSON.parse(r.entity_names) : [] };
+    source: r.source ? JSON.parse(r.source) : null, entity_names: r.entity_names ? JSON.parse(r.entity_names) : [],
+    type: r.type || null, confidence: (r.confidence !== undefined && r.confidence !== null) ? Number(r.confidence) : null,
+    access_count: (r.access_count !== undefined && r.access_count !== null) ? Number(r.access_count) : 0,
+    last_accessed_at: r.last_accessed_at || null, expires_at: r.expires_at || null };
 }
 function sqliteAdd(doc) {
   const d = sqliteInit();
-  d.prepare('INSERT INTO memories (id,content,user,project,session,tags,embedding,created_at,updated_at,history,entities,relations,source,entity_names) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+  d.prepare('INSERT INTO memories (id,content,user,project,session,tags,embedding,created_at,updated_at,history,entities,relations,source,entity_names,type,confidence,access_count,last_accessed_at,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
     .run(doc.id, doc.content, doc.user, doc.project, doc.session,
       JSON.stringify(doc.tags || []), doc.embedding ? JSON.stringify(doc.embedding) : null,
       doc.created_at, doc.updated_at || doc.created_at, JSON.stringify(doc.history || []),
       JSON.stringify(doc.entities || []), JSON.stringify(doc.relations || []),
-      doc.source ? JSON.stringify(doc.source) : null, JSON.stringify(doc.entity_names || []));
+      doc.source ? JSON.stringify(doc.source) : null, JSON.stringify(doc.entity_names || []),
+      doc.type || null, (doc.confidence !== undefined && doc.confidence !== null) ? Number(doc.confidence) : null,
+      doc.access_count || 0, doc.last_accessed_at || null, doc.expires_at || null);
 }
 function sqliteGet(id) {
   const r = sqliteInit().prepare('SELECT * FROM memories WHERE id=?').get(id);
@@ -105,6 +121,9 @@ function sqliteList(a) {
   if (a.session) { where.push('session=?'); params.push(a.session); }
   if (a.from) { where.push('updated_at >= ?'); params.push(a.from); }
   if (a.to) { where.push('updated_at <= ?'); params.push(a.to); }
+  if (a.type) { where.push('type=?'); params.push(a.type); }
+  if (a.min_confidence !== undefined && a.min_confidence !== null) { where.push('confidence >= ?'); params.push(Number(a.min_confidence)); }
+  where.push('(expires_at IS NULL OR expires_at > ?)'); params.push(new Date().toISOString());
   const clause = where.length ? ' WHERE ' + where.join(' AND ') : '';
   const rows = d.prepare('SELECT * FROM memories' + clause + ' ORDER BY updated_at DESC').all(...params).map(rowToDoc);
   return applyRecency(rows).slice(0, a.limit || 20);
@@ -179,6 +198,9 @@ async function sqliteSearch(a) {
   if (a.session) { where.push('session=?'); params.push(a.session); }
   if (a.from) { where.push('updated_at >= ?'); params.push(a.from); }
   if (a.to) { where.push('updated_at <= ?'); params.push(a.to); }
+  if (a.type) { where.push('type=?'); params.push(a.type); }
+  if (a.min_confidence !== undefined && a.min_confidence !== null) { where.push('confidence >= ?'); params.push(Number(a.min_confidence)); }
+  where.push('(expires_at IS NULL OR expires_at > ?)'); params.push(new Date().toISOString());
   const clause = where.length ? ' WHERE ' + where.join(' AND ') : '';
   if (mode === 'keyword') {
     const q = (a.query || '').trim();
@@ -413,9 +435,14 @@ async function embed(text) {
   const body = isOpenAI
     ? { model: CONFIG.embedding_model, input: [text] }
     : { model: CONFIG.embedding_model, input: text };
-  const r = await fetch(CONFIG.embedding_url, {
-    method: 'POST', headers: authHeaders(CONFIG.embedding_api_key || null),
-    body: JSON.stringify(body) });
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), CONFIG.embedding_timeout_ms || 30000);
+  let r;
+  try {
+    r = await fetch(CONFIG.embedding_url, {
+      method: 'POST', headers: authHeaders(CONFIG.embedding_api_key || null),
+      body: JSON.stringify(body), signal: ctrl.signal });
+  } finally { clearTimeout(to); }
   if (!r.ok) throw new Error('embed http ' + r.status);
   const d = await r.json();
   // OpenAI format: { data: [{ embedding: [...] }] }; Ollama format: { embeddings: [[...]] }
@@ -435,7 +462,15 @@ async function chatJSON({ url, model, apiKey, messages, temperature = 0.1, jsonM
   const body = { model, messages, temperature };
   // 云端（有 api_key）且要求 JSON 时，启用 response_format 强约束；本地 Ollama 通常靠 prompt 约束即可
   if (jsonMode && apiKey) body.response_format = { type: 'json_object' };
-  const r = await fetch(url, { method: 'POST', headers: authHeaders(apiKey), body: JSON.stringify(body) });
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), CONFIG.llm_timeout_ms || 90000);
+  let r;
+  try {
+    r = await fetch(url, { method: 'POST', headers: authHeaders(apiKey), body: JSON.stringify(body), signal: ctrl.signal });
+  } catch (e) {
+    // 超时或网络错误：返回 null，让上层走启发式/容错分支，不阻塞整条捕获链路
+    return null;
+  } finally { clearTimeout(to); }
   if (!r.ok) return null;
   const d = await r.json();
   const c = d.choices && d.choices[0] && d.choices[0].message && d.choices[0].message.content;
@@ -451,7 +486,12 @@ async function testEmbedding(b = {}) {
   try {
     const isOpenAI = url.includes('/v1/embeddings');
     const body = isOpenAI ? { model, input: ['test connectivity'] } : { model, input: 'test connectivity' };
-    const r = await fetch(url, { method: 'POST', headers: authHeaders(key || null), body: JSON.stringify(body) });
+    const ctrl = new AbortController();
+    const to = setTimeout(() => ctrl.abort(), CONFIG.embedding_timeout_ms || 30000);
+    let r;
+    try {
+      r = await fetch(url, { method: 'POST', headers: authHeaders(key || null), body: JSON.stringify(body), signal: ctrl.signal });
+    } finally { clearTimeout(to); }
     if (!r.ok) { let t = ''; try { t = await r.text(); } catch {} return { ok: false, message: `HTTP ${r.status} ${r.statusText}`, detail: t.slice(0, 200) }; }
     const d = await r.json();
     const vec = isOpenAI ? (d.data && d.data[0] && d.data[0].embedding) : (d.embeddings && d.embeddings[0]);
@@ -528,6 +568,12 @@ function filters(p) {
   if (p.user) f.push({ term: { user: p.user } });
   if (p.project) f.push({ term: { project: p.project } });
   if (p.session) f.push({ term: { session: p.session } });
+  // type 字段：索引可能是显式 keyword 映射，或动态映射为 text(带 .keyword 子字段)。
+  // 用 bool.should 同时兼容两种情形，避免 term 命中分析后的 text 而查不到。
+  if (p.type) f.push({ bool: { should: [ { term: { type: p.type } }, { term: { 'type.keyword': p.type } } ] } });
+  if (p.min_confidence !== undefined && p.min_confidence !== null) f.push({ range: { confidence: { gte: Number(p.min_confidence) } } });
+  // 过期记忆不参与检索/去重召回（无 expires_at 或尚未过期才返回）
+  f.push({ bool: { should: [ { bool: { must_not: { exists: { field: 'expires_at' } } } }, { range: { expires_at: { gt: new Date().toISOString() } } } ] } });
   return f;
 }
 
@@ -601,8 +647,135 @@ async function llmExtract(text) {
     return arr.filter(x => x && x.content).map(x => ({ content: String(x.content), tags: Array.isArray(x.tags) ? x.tags : [], importance: Number(x.importance) || 3 }));
   } catch (e) { return []; }
 }
+
+// ---- v1.4.0 事实抽取管线：shouldCapture → extractFacts → reconcileFact(judgeRelation) ----
+// 触发判定（Natural Memory Triggers）：auto_filter 关闭或无 LLM 时不拦截，保持旧行为
+async function shouldCapture(text) {
+  if (!CONFIG.auto_filter) return true;
+  if (!CONFIG.llm_enabled || !CONFIG.llm_url) return true;
+  const sys = 'You decide whether a piece of text contains information worth saving to long-term memory (durable facts, decisions, user preferences, commitments). Reply with ONLY JSON: {"keep": true|false, "reason": string}. No markdown.';
+  try {
+    const content = await chatJSON({ url: CONFIG.llm_url, model: CONFIG.llm_model, apiKey: CONFIG.llm_api_key || null,
+      messages: [ { role: 'system', content: sys }, { role: 'user', content: text } ], temperature: 0.1, jsonMode: true });
+    if (!content) return true;
+    let p; try { p = JSON.parse(content); } catch (e) { return true; }
+    return !!(p && p.keep === true);
+  } catch (e) { return true; }
+}
+
+// 原子事实抽取：把文本拆成原子事实，带类型/实体/置信度/生命周期
+async function extractFacts(text) {
+  if (!CONFIG.llm_enabled || !CONFIG.llm_url) return null;
+  const types = (CONFIG.fact_types && CONFIG.fact_types.length) ? CONFIG.fact_types.join(', ') : 'preference, decision, convention, project_fact';
+  const sys = 'You are a fact-extraction engine. From the given conversation/notes, extract durable ATOMIC facts worth remembering long-term (one fact per item, no compound sentences). For each fact provide: statement (one self-contained sentence), type (one of: ' + types + '), entities (array of mentioned named entities), confidence (0-1), scope (global|project|session), expires_in_days (integer or null; null for durable facts, e.g. 90 for temporary decisions). Ignore chit-chat, greetings, ephemeral content. Respond with ONLY JSON: {"facts":[...]}. If nothing worth keeping, return {"facts":[]}. No markdown, no commentary.';
+  try {
+    const content = await chatJSON({ url: CONFIG.llm_url, model: CONFIG.llm_model, apiKey: CONFIG.llm_api_key || null,
+      messages: [ { role: 'system', content: sys }, { role: 'user', content: 'Extract facts from:\n\n' + text } ], temperature: 0.2, jsonMode: true });
+    if (!content) return null;
+    let parsed; try { parsed = JSON.parse(content); } catch (e) { return null; }
+    const arr = Array.isArray(parsed.facts) ? parsed.facts : [];
+    return arr.filter(x => x && x.statement).map(x => ({
+      statement: String(x.statement),
+      type: x.type || 'project_fact',
+      entities: Array.isArray(x.entities) ? x.entities : [],
+      confidence: Number(x.confidence) || 0.5,
+      scope: ['global', 'project', 'session'].includes(x.scope) ? x.scope : 'global',
+      expires_in_days: (x.expires_in_days && Number(x.expires_in_days) > 0) ? Number(x.expires_in_days) : null
+    }));
+  } catch (e) { return null; }
+}
+
+// 关系判定：相同/矛盾/补充/无关
+async function judgeRelation(newText, oldDoc) {
+  if (!CONFIG.llm_enabled || !CONFIG.llm_url) return 'same';
+  const oldText = (oldDoc && oldDoc.content) || '';
+  const sys = 'Compare two memory statements. Classify their relationship as exactly one of: same (redundant/equivalent), contradict (new overrides old, they conflict), supplement (new adds compatible detail to old), irrelevant (similar wording but different meaning). Reply with ONLY JSON: {"relation":"same|contradict|supplement|irrelevant"}. No markdown.';
+  try {
+    const content = await chatJSON({ url: CONFIG.llm_url, model: CONFIG.llm_model, apiKey: CONFIG.llm_api_key || null,
+      messages: [ { role: 'system', content: sys }, { role: 'user', content: 'OLD: ' + oldText + '\nNEW: ' + newText } ], temperature: 0.1, jsonMode: true });
+    if (!content) return 'same';
+    let p; try { p = JSON.parse(content); } catch (e) { return 'same'; }
+    return ['same', 'contradict', 'supplement', 'irrelevant'].includes(p.relation) ? p.relation : 'same';
+  } catch (e) { return 'same'; }
+}
+
+// 冲突检测与合并：低置信丢弃 / 相似度<0.7 新建 / >=0.7 让 LLM 判关系后 跳过|更新|补充
+async function reconcileFact(fact, scope) {
+  scope = scope || {};
+  const now = new Date();
+  const expires_at = fact.expires_in_days ? new Date(now.getTime() + fact.expires_in_days * 86400000).toISOString() : null;
+  const baseTags = ['auto-captured'];
+  const meta = { type: fact.type, confidence: fact.confidence, scope: fact.scope, expires_at };
+  if (CONFIG.fact_confidence_threshold > 0 && fact.confidence < CONFIG.fact_confidence_threshold) {
+    return { action: 'skipped_low_conf', id: null };
+  }
+  const sUser = scope.user || 'auto', sProject = scope.project || null, sSession = scope.session || null;
+  if (!CONFIG.reconcile_enabled || !CONFIG.embedding_url) {
+    const r = await doAdd({ content: fact.statement, user: sUser, project: sProject, session: sSession,
+      tags: baseTags, source: scope.source || null, ...meta });
+    return { action: 'added', id: r.id };
+  }
+  let vec = null;
+  try { vec = await embed(fact.statement); } catch (e) {}
+  if (!vec) {
+    const r = await doAdd({ content: fact.statement, user: sUser, project: sProject, session: sSession,
+      tags: baseTags, source: scope.source || null, ...meta });
+    return { action: 'added', id: r.id };
+  }
+  const hit = await dedupFind(vec, { user: sUser, project: sProject, session: sSession });
+  if (!hit || hit.similarity < 0.7) {
+    const r = await doAdd({ content: fact.statement, user: sUser, project: sProject, session: sSession,
+      tags: baseTags, source: scope.source || null, ...meta });
+    return { action: 'added', id: r.id };
+  }
+  const rel = await judgeRelation(fact.statement, hit.source);
+  if (rel === 'same' || rel === 'irrelevant') {
+    return { action: 'skipped_dup', id: hit.id };
+  }
+  if (rel === 'contradict') {
+    const patch = { content: fact.statement, tags: Array.from(new Set([...(hit.source.tags || []), ...baseTags])),
+      updated_at: new Date().toISOString(), type: fact.type, confidence: fact.confidence, expires_at,
+      source: scope.source || null };
+    await doUpdate(hit.id, patch);
+    return { action: 'updated', id: hit.id };
+  }
+  const appended = ((hit.source.content || '') + ' ' + fact.statement).trim();
+  const patch = { content: appended, tags: Array.from(new Set([...(hit.source.tags || []), ...baseTags])),
+    updated_at: new Date().toISOString(), type: fact.type, confidence: Math.max(fact.confidence, hit.source.confidence || 0),
+    expires_at: expires_at || hit.source.expires_at || null, source: scope.source || null };
+  await doUpdate(hit.id, patch);
+  return { action: 'supplemented', id: hit.id };
+}
+
 async function captureText(text, scope) {
   scope = scope || {};
+  if (!(await shouldCapture(text))) {
+    return { captured: 0, skipped: 1, mode: 'filtered', items: [], reason: 'auto_filter discarded' };
+  }
+  // 新管线：事实抽取 + 冲突调和（reconcile_enabled 或开了 LLM 时启用）
+  if (CONFIG.reconcile_enabled || CONFIG.llm_enabled) {
+    let facts = await extractFacts(text);
+    if (facts === null) facts = []; // LLM 不可用，回退启发式
+    if (facts.length === 0) {
+      facts = splitSentences(text)
+        .filter(c => c.length >= CONFIG.capture_min_chars && keywordAllowed(c))
+        .map(c => ({ statement: c, type: 'project_fact', entities: [], confidence: 0.6, scope: 'global', expires_in_days: null }));
+    }
+    const cap = CONFIG.capture_max_per_call || 20;
+    const items = [];
+    let captured = 0, skipped = 0, updated = 0, supplemented = 0;
+    for (const f of facts.slice(0, cap)) {
+      try {
+        const r = await reconcileFact(f, scope);
+        if (r.action === 'added') { captured++; items.push({ id: r.id, content: f.statement }); }
+        else if (r.action === 'updated') { updated++; items.push({ id: r.id, content: f.statement, action: 'updated' }); }
+        else if (r.action === 'supplemented') { supplemented++; items.push({ id: r.id, content: f.statement, action: 'supplemented' }); }
+        else { skipped++; }
+      } catch (e) { skipped++; }
+    }
+    return { captured, skipped, updated, supplemented, mode: 'fact-pipeline', items };
+  }
+  // 兼容旧逻辑（未开 reconcile 且无 LLM）：启发式按句 + doAdd
   let mode = (CONFIG.llm_enabled && CONFIG.llm_url) ? 'llm' : 'heuristic';
   let candidates = [];
   if (mode === 'llm') {
@@ -672,10 +845,16 @@ async function doAdd(a) {
   const doc = {
     id,
     content: a.content, user: a.user, project: a.project || null, session: a.session || null,
-    tags: a.tags || [], created_at: now, updated_at: now, history: [] };
+    tags: a.tags || [], created_at: now, updated_at: now, history: [],
+    type: a.type || null,
+    confidence: (a.confidence !== undefined && a.confidence !== null) ? Number(a.confidence) : null,
+    access_count: 0,
+    last_accessed_at: now,
+    expires_at: a.expires_at || null,
+    source: a.source || null
+  };
   if (CONFIG.embedding_url) { try { doc.embedding = await embed(a.content); } catch (e) {} }
   await attachGraph(doc, a.content);
-  if (a.source) doc.source = a.source;
 
   // 记忆去重 / 合并：相似内容合并到已有记忆，避免重复条目
   const mergeAllowed = (a.merge !== undefined) ? a.merge : CONFIG.dedup_enabled;
@@ -712,7 +891,12 @@ function hitsToRows(res) {
     id: h._id, score: h._score, content: h._source.content, user: h._source.user,
     project: h._source.project, session: h._source.session, tags: h._source.tags || [], created_at: h._source.created_at,
     updated_at: h._source.updated_at, history: h._source.history || [],
-    entities: h._source.entities || [], relations: h._source.relations || [], source: h._source.source || null, entity_names: h._source.entity_names || [] }));
+    entities: h._source.entities || [], relations: h._source.relations || [], source: h._source.source || null, entity_names: h._source.entity_names || [],
+    type: h._source.type || null,
+    confidence: (h._source.confidence !== undefined && h._source.confidence !== null) ? Number(h._source.confidence) : null,
+    access_count: (h._source.access_count !== undefined && h._source.access_count !== null) ? Number(h._source.access_count) : 0,
+    last_accessed_at: h._source.last_accessed_at || null,
+    expires_at: h._source.expires_at || null }));
 }
 async function doSearch(a) {
   if (!CONFIG.es_url || !client) return sqliteSearch(a);
@@ -748,7 +932,12 @@ async function doSearch(a) {
     const rrf = 1 / (K + i + 1);
     if (merged.has(id)) merged.get(id).score += rrf;
     else merged.set(id, { id, score: rrf, content: h._source.content, user: h._source.user,
-      project: h._source.project, session: h._source.session, tags: h._source.tags || [], created_at: h._source.created_at, updated_at: h._source.updated_at });
+      project: h._source.project, session: h._source.session, tags: h._source.tags || [], created_at: h._source.created_at, updated_at: h._source.updated_at,
+      type: h._source.type || null,
+      confidence: (h._source.confidence !== undefined && h._source.confidence !== null) ? Number(h._source.confidence) : null,
+      access_count: (h._source.access_count !== undefined && h._source.access_count !== null) ? Number(h._source.access_count) : 0,
+      last_accessed_at: h._source.last_accessed_at || null,
+      expires_at: h._source.expires_at || null });
   });
   add(kwRes.hits.hits);
   add(knnRes.hits.hits);
@@ -764,7 +953,12 @@ async function doList(a) {
     id: h._id, content: h._source.content, user: h._source.user, project: h._source.project,
     session: h._source.session, tags: h._source.tags || [], created_at: h._source.created_at,
     updated_at: h._source.updated_at, history: h._source.history || [],
-    entities: h._source.entities || [], relations: h._source.relations || [], source: h._source.source || null, entity_names: h._source.entity_names || [] }));
+    entities: h._source.entities || [], relations: h._source.relations || [], source: h._source.source || null, entity_names: h._source.entity_names || [],
+    type: h._source.type || null,
+    confidence: (h._source.confidence !== undefined && h._source.confidence !== null) ? Number(h._source.confidence) : null,
+    access_count: (h._source.access_count !== undefined && h._source.access_count !== null) ? Number(h._source.access_count) : 0,
+    last_accessed_at: h._source.last_accessed_at || null,
+    expires_at: h._source.expires_at || null }));
   return applyRecency(rows).slice(0, a.limit || 20);
 }
 async function doDelete(id) {
@@ -788,6 +982,11 @@ async function doUpdate(id, patch) {
     if (CONFIG.kg_enabled && patch.content !== undefined) {
       try { const g = await extractGraph(patch.content); sets.push('entities=?'); params.push(JSON.stringify(g.entities)); sets.push('relations=?'); params.push(JSON.stringify(g.relations)); sets.push('entity_names=?'); params.push(JSON.stringify(g.entity_names || [])); } catch (e) {}
     }
+    if (patch.type !== undefined) { sets.push('type=?'); params.push(patch.type || null); }
+    if (patch.confidence !== undefined) { sets.push('confidence=?'); params.push(patch.confidence); }
+    if (patch.access_count !== undefined) { sets.push('access_count=?'); params.push(patch.access_count); }
+    if (patch.last_accessed_at !== undefined) { sets.push('last_accessed_at=?'); params.push(patch.last_accessed_at); }
+    if (patch.expires_at !== undefined) { sets.push('expires_at=?'); params.push(patch.expires_at || null); }
     if (patch.source !== undefined) { sets.push('source=?'); params.push(patch.source ? JSON.stringify(patch.source) : null); }
     const history = (prev.history || []).slice();
     if (patch.content !== undefined && patch.content !== prev.content) {
@@ -810,6 +1009,11 @@ async function doUpdate(id, patch) {
   else doc.updated_at = now;
   if (CONFIG.embedding_url && patch.content !== undefined) { try { doc.embedding = await embed(patch.content); } catch (e) {} }
   if (CONFIG.kg_enabled && patch.content !== undefined) { try { const g = await extractGraph(patch.content); doc.entities = g.entities; doc.relations = g.relations; doc.entity_names = g.entity_names || []; } catch (e) {} }
+  if (patch.type !== undefined) doc.type = patch.type || null;
+  if (patch.confidence !== undefined) doc.confidence = patch.confidence;
+  if (patch.access_count !== undefined) doc.access_count = patch.access_count;
+  if (patch.last_accessed_at !== undefined) doc.last_accessed_at = patch.last_accessed_at;
+  if (patch.expires_at !== undefined) doc.expires_at = patch.expires_at || null;
   if (patch.source !== undefined) doc.source = patch.source || null;
   const prevHistory = (prev.history || []);
   if (patch.content !== undefined && patch.content !== prev.content) {
@@ -823,7 +1027,7 @@ async function doUpdate(id, patch) {
 
 // ---- MCP server factory (one instance per SSE connection) ----
 function createServer() {
-  const server = new Server({ name: 'ai-memory', version: '1.3.3' }, { capabilities: { tools: {} } });
+  const server = new Server({ name: 'ai-memory', version: '1.4.0' }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
@@ -881,7 +1085,7 @@ try { ADMIN_HTML = fs.readFileSync(path.join(__dirname, 'admin.html'), 'utf8'); 
 
 // ---- Docs (interface reference for admin help page; TOOLS reused so it stays in sync) ----
 const DOCS = {
-  server_version: '1.3.3',
+  server_version: '1.4.0',
   overview: 'AI Memory 是记忆体 MCP 服务：默认基于 Elasticsearch，当 es_url 留空时自动降级为本地 SQLite 文件库（memories.db），均无需额外部署即可运行。提供记忆的存储(add)、查询(search/list)、编辑、删除能力，支持关键词(BM25)、语义(kNN 向量)与混合(RRF 应用层融合)三种检索模式。本管理界面可管理记忆数据、配置数据库与嵌入模型。',
   transport: 'MCP 通过 SSE 暴露：客户端连接 GET /sse 建立会话，工具调用经 POST /message 转发(JSON-RPC 2.0)。',
   tools: TOOLS,
@@ -928,6 +1132,10 @@ const DOCS = {
     { key: 'kg_model', desc: '知识图谱抽取专用 chat 模型名（默认回退到 llm_model）。建议用更强模型（如本地 qwen3.5:9b 或云端 deepseek 系列）以获得更稳定的实体/关系抽取；minicpm5-1b 对嵌套图 schema 不稳定。' },
     { key: 'kg_url', desc: '知识图谱抽取专用的 chat 端点（OpenAI 兼容）。留空则复用自动捕获的 llm_url（即与捕获共用同一端点）。可独立指向云端，让图谱抽取走云、捕获留本地，二者解耦。' },
     { key: 'kg_api_key', desc: '图谱抽取端点（kg_url）的 API Key。留空则复用 llm_api_key。本地 Ollama 留空即无鉴权。' },
+    { key: 'fact_types', desc: '事实抽取的类型本体（JSON 数组），如 ["preference","decision","convention","project_fact","anti_pattern","person","tooling","temporal"]。extractFacts 抽取时约束 type 取值。v1.4.0 新增。' },
+    { key: 'auto_filter', desc: '自动捕获的触发判定开关（true/false），默认 false。开启后捕获前先让 LLM 判断文本是否值得长期记，否则整段都处理（省 token 但可能记无用内容）。v1.4.0 新增。' },
+    { key: 'fact_confidence_threshold', desc: '事实最低置信度阈值（0-1），默认 0.5。抽取出的事实 confidence 低于此值直接丢弃，不入库。v1.4.0 新增。' },
+    { key: 'reconcile_enabled', desc: '冲突检测与合并开关（true/false），默认 true。开启后捕获会先语义召回相似记忆，让 LLM 判关系（相同/矛盾/补充/无关）后决定跳过/更新/补充；关闭则每条事实直接新建。v1.4.0 新增。' },
   ],
   search_modes: [
     { mode: 'keyword', desc: 'BM25 关键词匹配。不依赖嵌入服务，始终可用。' },
@@ -1060,6 +1268,10 @@ const httpServer = http.createServer(async (req, res) => {
       if (b.kg_model !== undefined) newCfg.kg_model = b.kg_model || CONFIG.llm_model;
       if (b.kg_url !== undefined) newCfg.kg_url = b.kg_url;
       if (b.kg_api_key !== undefined && b.kg_api_key !== '******') newCfg.kg_api_key = b.kg_api_key;
+      if (b.fact_types !== undefined && Array.isArray(b.fact_types)) newCfg.fact_types = b.fact_types;
+      if (b.auto_filter !== undefined) newCfg.auto_filter = b.auto_filter;
+      if (b.fact_confidence_threshold !== undefined) newCfg.fact_confidence_threshold = Number(b.fact_confidence_threshold) || 0.5;
+      if (b.reconcile_enabled !== undefined) newCfg.reconcile_enabled = b.reconcile_enabled;
       saveConfig(newCfg);
       sendJson(res, 200, { ok: true, restarting: true, config: { ...newCfg, es_pwd: newCfg.es_pwd || '' } });
       setTimeout(() => { exec('systemctl restart ai-memory'); }, 400);
@@ -1102,9 +1314,14 @@ const httpServer = http.createServer(async (req, res) => {
       const user = url.searchParams.get('user') || '';
       const from = url.searchParams.get('from') || '';
       const to = url.searchParams.get('to') || '';
+      const type = url.searchParams.get('type') || '';
+      const minConf = url.searchParams.get('min_confidence') || '';
+      const filt = { limit, project, user, from, to };
+      if (type) filt.type = type;
+      if (minConf) filt.min_confidence = Number(minConf);
       let rows;
-      if (q) rows = await doSearch({ query: q, mode, top_k: limit, project, user, from, to });
-      else rows = await doList({ limit, project, user, from, to });
+      if (q) rows = await doSearch({ query: q, mode, top_k: limit, project, user, from, to, ...filt });
+      else rows = await doList(filt);
       return sendJson(res, 200, { count: rows.length, rows });
     }
     // --- REST: memories cleanup (lifecycle) ---

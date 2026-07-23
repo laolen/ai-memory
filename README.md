@@ -287,7 +287,8 @@ ssh root@192.168.110.128 'cd /opt/ai-memory && \
 
 ## 十二、版本
 
-- **v1.7.0**：项目隔离 + 跨项目借鉴 + 溯源。① 项目间强弱关联（`project_links` 表 + `manage_project_link` 工具 + `/api/project-links` 接口），检索/列出时按 `relationDecay(strength)=0.2+0.6*s` 衰减借用关联项目记忆；`include_related` 可逐请求关闭。② 记忆溯源：`normalizeSource` 统一打 `captured_at`/`trigger`，支持 `conversation_id/message_id/url/file/line`；`/admin` 新增「溯源」列与弹窗。修复 `doList` 误用 `hitsToRows([h])` 导致 500、跨项目 `include_related` 覆盖在 ES 路径不生效
+- **v1.7.0**：项目隔离 + 跨项目借鉴 + 溯源。① 项目间强弱关联（`project_links` 表 + `manage_project_link` 工具 + `/api/project-links` 接口），检索/列出时按 `relationDecay(strength)=0.2+0.6*s` 衰减借用关联项目记忆；`include_related` 可逐请求关闭。② 记忆溯源：`normalizeSource` 统一打 `captured_at`/`trigger`，支持 `conversation_id/message_id/url/file/line`；`/admin` 新增「溯源」列与弹窗。修复 `doList` 误用 `hitsToRows([h])` 导致 500、跨项目 `include_related` 覆盖在 ES 路径不生效。
+  - **v1.7.0 追加修复（功能互查）**：③ `doList` 跨项目记忆此前只对主项目记忆赋基准分、关联记忆未乘 `relationDecay` 且因走 `bool.filter` 查询 `_score` 恒为 0 导致衰减成空操作——现已统一主=1/关联=decay 基准分，列表视图关联记忆稳定排在后面。④ 生命周期清理（`cleanupExpired`/`purgeMemories`）原只按 `updated_at` 删，过期 session/TTL 记忆被隐藏却永不删除（索引膨胀、且被合并更新的过期记忆逃过清理）——改为同时按 `expires_at<now` 删除。⑤ 跨项目借鉴的 `bumpAccess` 耦合：原 `doSearch` 对所有返回记忆（含借来的）做访问强化，导致在 A 项目检索会刷新 B 项目记忆的 `last_accessed_at`、使其常驻新鲜——现只强化主项目记忆（`!r.related_project`）。端到端验证见 `verify_fixes.py`
 - **v1.6.0**：记忆分类 `memory_type`（user/agent/session，与 `scope`/`category` 正交）+ `salience` 强化评分（`0.5*重要性 + 0.5*访问强化`，搜索命中回写 `access_count`/`last_accessed_at`）；时间衰减基准改为 `last_accessed_at`（越回想越巩固）；修复 ES `bool.should` 过滤失效与 `GET /api/memories` 漏解析 `memory_type`
 - **v1.5.3**：把 `fact_entities` 兜底扩展到 `doUpdate` 全路径（supplement / contradict 覆盖 / dedup-merge 分支），云端模型在更新与新建场景均不再丢实体（与 doAdd 一致）
 - **v1.5.2**：修复云端模型（deepseek v4-flash/pro）`entities` 恒空——强化 `extractFacts` 提示词（entities 标 REQUIRED + 中文 few-shot）+ `reconcileFact` 透传 `fact_entities` + `doAdd` 加事实阶段实体兜底

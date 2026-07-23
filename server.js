@@ -297,27 +297,57 @@ function timeFilter(a) {
 async function cleanupExpired() {
   if (!(CONFIG.expiry_days > 0)) return 0;
   const cutoff = new Date(Date.now() - CONFIG.expiry_days * 86400000).toISOString();
+  const now = new Date().toISOString();
   if (CONFIG.es_url && client) {
-    try { const r = await client.deleteByQuery({ index: CONFIG.es_index, body: { query: { range: { updated_at: { lt: cutoff } } } } }); return r.deleted || 0; } catch (e) { return 0; }
+    // v1.7.0 修复②：删除条件 = ①已过期(expires_at<now)的 session/TTL 记忆，或
+    // ②无 expires_at 且 updated_at 早于 cutoff 的长期记忆。原逻辑只按 updated_at，
+    // 导致过期记忆被 filters 隐藏却永不真正删除（索引持续膨胀），且被合并更新过的过期记忆会逃过清理。
+    const query = {
+      bool: {
+        should: [
+          { range: { expires_at: { lt: now } } },
+          { bool: { must: [
+            { range: { updated_at: { lt: cutoff } } },
+            { bool: { should: [ { bool: { must_not: { exists: { field: 'expires_at' } } } }, { range: { expires_at: { gte: now } } } ], minimum_should_match: 1 } }
+          ] } }
+        ],
+        minimum_should_match: 1
+      }
+    };
+    try { const r = await client.deleteByQuery({ index: CONFIG.es_index, body: { query } }); return r.deleted || 0; } catch (e) { return 0; }
   }
   const d = sqliteInit();
-  const res = d.prepare('DELETE FROM memories WHERE updated_at < ?').run(cutoff);
+  const res = d.prepare('DELETE FROM memories WHERE expires_at < ? OR (updated_at < ? AND (expires_at IS NULL OR expires_at >= ?))').run(now, cutoff, now);
   return res.changes;
 }
 async function purgeMemories(scope) {
   const days = scope.days || CONFIG.expiry_days;
   if (!(days > 0)) return 0;
   const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+  const now = new Date().toISOString();
   if (CONFIG.es_url && client) {
-    const f = filters(scope);
-    f.push({ range: { updated_at: { lt: cutoff } } });
+    // v1.7.0 修复②：与 cleanupExpired 同语义，但按 scope(user/project/session) 限定。
+    // 注意：不能用 filters(scope)——它会把过期项排除出召回，导致 deleteByQuery 删不到过期记忆。这里仅挂 scope 维度 + 过期/陈旧条件。
+    const f = [];
+    if (scope.user) f.push({ term: { user: scope.user } });
+    if (scope.project) f.push({ term: { project: scope.project } });
+    if (scope.session) f.push({ term: { session: scope.session } });
+    f.push({ bool: { should: [
+      { range: { expires_at: { lt: now } } },
+      { bool: { must: [
+        { range: { updated_at: { lt: cutoff } } },
+        { bool: { should: [ { bool: { must_not: { exists: { field: 'expires_at' } } } }, { range: { expires_at: { gte: now } } } ], minimum_should_match: 1 } }
+      ] } }
+    ], minimum_should_match: 1 } });
     try { const r = await client.deleteByQuery({ index: CONFIG.es_index, body: { query: { bool: { filter: f } } } }); return r.deleted || 0; } catch (e) { return 0; }
   }
   const d = sqliteInit();
-  const where = ['updated_at < ?'], params = [cutoff];
+  const where = [], params = [];
   if (scope.user) { where.push('user=?'); params.push(scope.user); }
   if (scope.project) { where.push('project=?'); params.push(scope.project); }
   if (scope.session) { where.push('session=?'); params.push(scope.session); }
+  where.push('(expires_at < ? OR (updated_at < ? AND (expires_at IS NULL OR expires_at >= ?)))');
+  params.push(now, cutoff, now);
   const res = d.prepare('DELETE FROM memories WHERE ' + where.join(' AND ')).run(...params);
   return res.changes;
 }
@@ -1172,7 +1202,9 @@ async function searchProject(project, a, vec) {
   return applyRecency(rerankWithContext([...merged.values()].sort((x, y) => y.score - x.score), a.query || '')).slice(0, top_k);
 }
 async function doSearch(a) {
-  const finish = (res) => { if (res && res.length) bumpAccess(res.map(r => r.id)).catch(() => {}); return res; };
+  // v1.7.0 修复③：跨项目借鉴的记忆(related_project)属于其它项目，不应对其做访问强化——
+  // 否则在 A 项目检索会"刷新"B 项目记忆的 last_accessed_at，使其在本项目常驻新鲜、recency 永不衰减。
+  const finish = (res) => { if (res && res.length) bumpAccess(res.filter(r => !r.related_project).map(r => r.id)).catch(() => {}); return res; };
   // SQLite 路径：主项目 + 关联项目(按强度衰减)
   if (!CONFIG.es_url || !client) {
     let rows = await sqliteSearch(a);
@@ -1214,12 +1246,17 @@ async function doList(a) {
     const res = await client.search({ index: CONFIG.es_index, body });
     return hitsToRows(res);
   };
-  let rows = (await listProject(a.project || null)).map(r => { r.related_project = null; return r; });
+  // v1.7.0 修复①补充：doList 走 bool.filter 查询，ES 返回的 _score 恒为 0；
+  // 若不归一化，关联记忆的 *decay 会变成 0*decay=0，衰减失效、与 doSearch 语义不一致。
+  // 故主项目记忆基准分=1，关联记忆基准分=decay（与 doSearch 对齐：借来的记忆更弱、排在后面）。
+  const baseScore = (r) => (typeof r.score === 'number' && r.score > 0 ? r.score : 1);
+  let rows = (await listProject(a.project || null)).map(r => { r.related_project = null; r.score = baseScore(r); return r; });
   if (relEnabled(a) && a.project) {
     const links = getProjectLinks(a.project);
     for (const lk of links) {
       const rel = await listProject(lk.to_project);
-      rel.forEach(r => { r.related_project = lk.to_project; r.relation_strength = lk.strength; r.relation_note = lk.note || null; });
+      const decay = relationDecay(lk.strength);
+      rel.forEach(r => { r.related_project = lk.to_project; r.relation_strength = lk.strength; r.relation_note = lk.note || null; r.score = baseScore(r) * decay; });
       rows = rows.concat(rel);
     }
   }

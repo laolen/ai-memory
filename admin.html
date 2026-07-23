@@ -264,6 +264,18 @@
     <svg id="g-svg" style="width:100%;height:520px;background:#0d1117;border:1px solid #30363d;border-radius:8px"></svg>
     <div id="g-legend" class="muted" style="margin-top:6px"></div>
   </div>
+  <div class="card" style="max-width:100%;margin-top:18px">
+    <h3 style="margin-top:0">聚合图谱 + 全文索引（v1.10.0）</h3>
+    <p class="muted" style="margin:4px 0">持久化图谱（kg_entities/kg_relations 聚合跨记忆的实体/关系）与 FTS5 全文索引。可视化下方聚合图谱；「重建索引」扫描主存储回填 FTS 与图谱（迁移存量数据用，幂等）。</p>
+    <div class="toolbar">
+      <div style="flex:0 0 240px"><label>项目过滤</label><input id="kg-project" placeholder="留空=全部" /></div>
+      <div style="flex:0 0 auto"><button onclick="kgLoad()">加载聚合图谱</button></div>
+      <div style="flex:0 0 auto"><button class="ghost" onclick="kgReindex()">重建索引(FTS+图谱)</button></div>
+    </div>
+    <div id="kg-msg" class="muted" style="margin:6px 0"></div>
+    <svg id="kg-svg" style="width:100%;height:460px;background:#0d1117;border:1px solid #30363d;border-radius:8px"></svg>
+    <div id="kg-legend" class="muted" style="margin-top:6px"></div>
+  </div>
 </div>
 
 <!-- 质量监控 (v1.8.0) -->
@@ -766,6 +778,71 @@ function gDraw(lm){
   $('#g-legend').innerHTML='类型：'+used.map(t=>'<span style="color:'+(color[t]||'#8b949e')+'">●</span> '+t).join('　');
 }
 async function gClick(id){ $('#g-seed').value=id; await gExpand(); }
+
+// ---- 聚合图谱 + 全文索引 (v1.10.0) ----
+async function kgLoad() {
+  const project = ($('#kg-project').value || '').trim();
+  $('#kg-msg').textContent = '加载中…';
+  try {
+    const url = '/api/kg?limit=300' + (project ? '&project=' + encodeURIComponent(project) : '');
+    const r = await fetch(url);
+    const j = await r.json();
+    const ents = j.entities || [];
+    const rels = j.relations || [];
+    if (!ents.length) { $('#kg-msg').textContent = '该范围暂无聚合实体（先添加带实体的记忆，或点击「重建索引」）'; $('#kg-svg').innerHTML = ''; $('#kg-legend').innerHTML = ''; return; }
+    const kgNodes = new Map();
+    for (const e of ents) { kgNodes.set(e.canonical, { id: e.canonical, label: e.name, type: e.type || 'other', count: e.memory_count || 0 }); }
+    const kgLinks = new Map();
+    for (const r2 of rels) {
+      if (!kgNodes.has(r2.source) || !kgNodes.has(r2.target)) continue;
+      const key = r2.source + '|' + r2.target + '|' + r2.type;
+      if (!kgLinks.has(key)) kgLinks.set(key, { source: r2.source, target: r2.target, type: r2.type, strength: r2.strength || 1 });
+    }
+    kgSimulate(kgNodes, kgLinks);
+    const relTxt = kgLinks.size ? ('，关系 ' + kgLinks.size) : '';
+    $('#kg-msg').textContent = '实体 ' + kgNodes.size + relTxt + '（项目：' + (project || '全部') + '）';
+  } catch (e) { $('#kg-msg').textContent = '加载失败: ' + e.message; }
+}
+function kgSimulate(kgNodes, kgLinks) {
+  const nodes = [...kgNodes.values()]; const links = [...kgLinks.values()];
+  const W = 800, H = 460;
+  nodes.forEach((n, i) => { if (n.x == null) { n.x = W / 2 + Math.cos(i) * 150 + (Math.random() * 20 - 10); n.y = H / 2 + Math.sin(i) * 150 + (Math.random() * 20 - 10); n.vx = 0; n.vy = 0; } });
+  const lm = [];
+  for (const l of links) { const s = kgNodes.get(l.source), t = kgNodes.get(l.target); if (s && t) lm.push({ s, t, type: l.type, strength: l.strength || 1 }); }
+  for (let it = 0; it < 400; it++) {
+    for (let a = 0; a < nodes.length; a++) { for (let b = a + 1; b < nodes.length; b++) {
+      const na = nodes[a], nb = nodes[b]; let dx = na.x - nb.x, dy = na.y - nb.y; let d2 = dx * dx + dy * dy + 0.01; let d = Math.sqrt(d2);
+      const f = 900 / d2; const fx = f * dx / d, fy = f * dy / d; na.vx += fx; na.vy += fy; nb.vx -= fx; nb.vy -= fy;
+    } }
+    for (const l of lm) { const s = l.s, t = l.t; let dx = t.x - s.x, dy = t.y - s.y; let d = Math.sqrt(dx * dx + dy * dy + 0.01); const f = (d - 95) * 0.02; const fx = f * dx / d, fy = f * dy / d; s.vx += fx; s.vy += fy; t.vx -= fx; t.vy -= fy; }
+    for (const n of nodes) { n.vx += (W / 2 - n.x) * 0.006; n.vy += (H / 2 - n.y) * 0.006; n.vx *= 0.85; n.vy *= 0.85; n.x += n.vx; n.y += n.vy;
+      n.x = Math.max(34, Math.min(W - 34, n.x)); n.y = Math.max(22, Math.min(H - 22, n.y)); }
+  }
+  kgDraw(kgNodes, kgLinks, lm, W, H);
+}
+function kgDraw(kgNodes, kgLinks, lm, W, H) {
+  const svg = $('#kg-svg');
+  const color = { 'person': '#58a6ff', 'project': '#3fb950', 'system': '#d29922', 'file': '#bc8cff', 'concept': '#f778ba', 'org': '#ff7b72', 'decision': '#39c5cf', 'other': '#8b949e' };
+  let h = '';
+  for (const l of lm) { h += '<line x1="' + l.s.x.toFixed(1) + '" y1="' + l.s.y.toFixed(1) + '" x2="' + l.t.x.toFixed(1) + '" y2="' + l.t.y.toFixed(1) + '" stroke="#30363d" stroke-width="1.5"><title>' + esc(l.type) + '</title></line>'; }
+  for (const n of kgNodes.values()) { const c = color[n.type] || '#8b949e'; const rad = Math.min(18, 9 + (n.count || 0));
+    h += '<g><circle cx="' + n.x.toFixed(1) + '" cy="' + n.y.toFixed(1) + '" r="' + rad + '" fill="' + c + '"><title>' + esc(n.label) + ' | 出现 ' + (n.count || 0) + ' 次</title></circle>' +
+       '<text x="' + (n.x + 12).toFixed(1) + '" y="' + (n.y + 4).toFixed(1) + '" fill="#e6edf3" font-size="12">' + esc(n.label) + '</text></g>'; }
+  svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H); svg.innerHTML = h;
+  const used = [...new Set([...kgNodes.values()].map(n => n.type))];
+  $('#kg-legend').innerHTML = '类型：' + used.map(t => '<span style="color:' + (color[t] || '#8b949e') + '">●</span> ' + t).join('　');
+}
+async function kgReindex() {
+  $('#kg-msg').textContent = '重建索引中（FTS5 + 聚合图谱），可能需要数秒…';
+  try {
+    const r = await fetch('/api/reindex', { method: 'POST' });
+    const j = await r.json();
+    const fts = (j.fts_indexed != null) ? j.fts_indexed : '?';
+    const kg = j.kg || {};
+    $('#kg-msg').textContent = '重建完成：FTS 索引 ' + fts + ' 条，图谱实体 ' + (kg.entities || 0) + '，关系 ' + (kg.relations || 0);
+    await kgLoad();
+  } catch (e) { $('#kg-msg').textContent = '重建失败: ' + e.message; }
+}
 
 // ---- 质量监控面板 (v1.8.0) ----
 async function loadMetrics() {

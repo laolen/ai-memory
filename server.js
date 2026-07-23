@@ -56,6 +56,7 @@ function loadConfig() {
     source_trust_enabled: (f.source_trust_enabled !== undefined) ? f.source_trust_enabled : true,
     source_trust_weights: (f.source_trust_weights && typeof f.source_trust_weights === 'object') ? f.source_trust_weights : { human: 1.0, agent: 0.85, tool: 0.7, system: 0.6 },
     preserve_on_conflict: (f.preserve_on_conflict !== undefined) ? f.preserve_on_conflict : false,
+    salience_enabled: (f.salience_enabled !== undefined) ? f.salience_enabled : true,
   };
 }
 function saveConfig(cfg) {
@@ -63,6 +64,12 @@ function saveConfig(cfg) {
 }
 let CONFIG = loadConfig();
 let client = null;
+// v1.6.0: 单一版本常量，Server.version / health / DOCS 全部引用它，避免硬编码漂移
+const SERVER_VERSION = '1.6.0';
+// v1.6.0: salience 评分权重（显性的「衰减+强化」综合分，夹 [0,1]）
+// salience = W_IMP*重要性(confidence) + W_ACC*访问强化(access_count 归一)；recency 衰减由 applyRecency 单独处理，避免双重计数
+const SALIENCE_W_IMP = 0.5, SALIENCE_W_ACC = 0.5, SALIENCE_ACCESS_K = 10, SALIENCE_SCORE_W = 0.7;
+function clamp01(x) { return Math.max(0, Math.min(1, x)); }
 function rebuildClient() {
   client = CONFIG.es_url ? new Client({ node: CONFIG.es_url, auth: { username: CONFIG.es_user, password: CONFIG.es_pwd } }) : null;
 }
@@ -91,6 +98,7 @@ function sqliteInit() {
   if (!_cols.has('last_accessed_at')) db.exec('ALTER TABLE memories ADD COLUMN last_accessed_at TEXT');
   if (!_cols.has('expires_at')) db.exec('ALTER TABLE memories ADD COLUMN expires_at TEXT');
   if (!_cols.has('category')) db.exec('ALTER TABLE memories ADD COLUMN category TEXT');
+  if (!_cols.has('memory_type')) db.exec('ALTER TABLE memories ADD COLUMN memory_type TEXT');
   return db;
 }
 function rowToDoc(r) {
@@ -101,18 +109,19 @@ function rowToDoc(r) {
     source: r.source ? JSON.parse(r.source) : null, entity_names: r.entity_names ? JSON.parse(r.entity_names) : [],
     type: r.type || null, category: r.category || 'semantic', confidence: (r.confidence !== undefined && r.confidence !== null) ? Number(r.confidence) : null,
     access_count: (r.access_count !== undefined && r.access_count !== null) ? Number(r.access_count) : 0,
-    last_accessed_at: r.last_accessed_at || null, expires_at: r.expires_at || null };
+    last_accessed_at: r.last_accessed_at || null, expires_at: r.expires_at || null,
+    memory_type: r.memory_type || 'user' };
 }
 function sqliteAdd(doc) {
   const d = sqliteInit();
-  d.prepare('INSERT INTO memories (id,content,user,project,session,tags,embedding,created_at,updated_at,history,entities,relations,source,entity_names,type,category,confidence,access_count,last_accessed_at,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+  d.prepare('INSERT INTO memories (id,content,user,project,session,tags,embedding,created_at,updated_at,history,entities,relations,source,entity_names,type,category,confidence,access_count,last_accessed_at,expires_at,memory_type) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
     .run(doc.id, doc.content, doc.user, doc.project, doc.session,
       JSON.stringify(doc.tags || []), doc.embedding ? JSON.stringify(doc.embedding) : null,
       doc.created_at, doc.updated_at || doc.created_at, JSON.stringify(doc.history || []),
       JSON.stringify(doc.entities || []), JSON.stringify(doc.relations || []),
       doc.source ? JSON.stringify(doc.source) : null, JSON.stringify(doc.entity_names || []),
       doc.type || null, doc.category || 'semantic', (doc.confidence !== undefined && doc.confidence !== null) ? Number(doc.confidence) : null,
-      doc.access_count || 0, doc.last_accessed_at || null, doc.expires_at || null);
+      doc.access_count || 0, doc.last_accessed_at || null, doc.expires_at || null, doc.memory_type || 'user');
 }
 function sqliteGet(id) {
   const r = sqliteInit().prepare('SELECT * FROM memories WHERE id=?').get(id);
@@ -130,6 +139,7 @@ function sqliteList(a) {
   if (a.to) { where.push('updated_at <= ?'); params.push(a.to); }
   if (a.type) { where.push('type=?'); params.push(a.type); }
   if (a.category) { where.push('category=?'); params.push(a.category); }
+  if (a.memory_type) { where.push('memory_type=?'); params.push(a.memory_type); }
   if (a.min_confidence !== undefined && a.min_confidence !== null) { where.push('confidence >= ?'); params.push(Number(a.min_confidence)); }
   where.push('(expires_at IS NULL OR expires_at > ?)'); params.push(new Date().toISOString());
   const clause = where.length ? ' WHERE ' + where.join(' AND ') : '';
@@ -204,6 +214,13 @@ function sourceTrustFactor(source) {
   const w = CONFIG.source_trust_weights && CONFIG.source_trust_weights[sourceTypeOf(source)];
   return (w && w > 0) ? w : 1;
 }
+// v1.6.0: salience = 重要性(confidence) + 访问强化(access_count 归一)，夹 [0,1]。
+// recency 衰减由 applyRecency 单独处理，这里不重复计，避免双重加权。
+function computeSalience(r) {
+  const importance = (typeof r.confidence === 'number' && r.confidence >= 0) ? Math.min(1, r.confidence) : 0.5;
+  const acc = Math.min((Number(r.access_count) || 0) / SALIENCE_ACCESS_K, 1);
+  return clamp01(SALIENCE_W_IMP * importance + SALIENCE_W_ACC * acc);
+}
 function rerankWithContext(rows, query) {
   const qEnts = queryEntities(query);
   const boost = CONFIG.entity_link_boost || 0;
@@ -211,6 +228,13 @@ function rerankWithContext(rows, query) {
     const eb = entityBoostFactor(r.entity_names, qEnts, boost);
     const st = sourceTrustFactor(r.source);
     r.score = (r.score != null ? r.score : 1) * eb * st;
+    // v1.6.0: 计算 salience 并作为附加调制因子（强化常用记忆浮顶，但保留原排序主轴）
+    const sal = computeSalience(r);
+    r.salience = sal;
+    if (CONFIG.salience_enabled) {
+      const blend = SALIENCE_SCORE_W + (1 - SALIENCE_SCORE_W) * sal;
+      r.score = r.score * blend;
+    }
   });
   return rows;
 }
@@ -267,6 +291,7 @@ async function sqliteSearch(a) {
   if (a.to) { where.push('updated_at <= ?'); params.push(a.to); }
   if (a.type) { where.push('type=?'); params.push(a.type); }
   if (a.category) { where.push('category=?'); params.push(a.category); }
+  if (a.memory_type) { where.push('memory_type=?'); params.push(a.memory_type); }
   if (a.min_confidence !== undefined && a.min_confidence !== null) { where.push('confidence >= ?'); params.push(Number(a.min_confidence)); }
   where.push('(expires_at IS NULL OR expires_at > ?)'); params.push(new Date().toISOString());
   const clause = where.length ? ' WHERE ' + where.join(' AND ') : '';
@@ -453,22 +478,25 @@ const TOOLS = [
       content: { type: 'string' }, user: { type: 'string' }, project: { type: 'string' },
       session: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } },
       category: { type: 'string', enum: ['semantic', 'episodic', 'procedural'], description: '记忆分类：semantic=持久事实/偏好，episodic=特定情境下的事件/决定，procedural=操作流程/沟通风格。默认 semantic。v1.5.0 新增。' },
+      memory_type: { type: 'string', enum: ['user', 'agent', 'session'], description: '记忆类型（v1.6.0 新增）：user=关于用户本人的持久事实/偏好（用户画像类），agent=Agent 自身的运行记忆/习得，session=仅当前会话相关、会话结束后价值衰减的临时记忆。默认 user。' },
       merge: { type: 'boolean', description: 'Allow merging with a highly similar existing memory. Default: follows global dedup_enabled config. Set false to always create a new entry.' },
       source: { type: 'object', description: 'Optional provenance, e.g. {type:"doc", ref:"docs-mcp-server://.../page"} — recorded on the memory and shown in the knowledge graph. v1.5.0: type 可填 human/agent/tool/system 以参与来源信任加权。' } },
       required: ['content', 'user'] } },
-  { name: 'search_memories', description: 'Search memories. mode: keyword (BM25), semantic (kNN), hybrid (RRF). Results are time-decay weighted (recent first) when recency_enabled. Use from/to (ISO date/time or YYYY-MM-DD) to limit to a time window by updated_at.',
+  { name: 'search_memories', description: 'Search memories. mode: keyword (BM25), semantic (kNN), hybrid (RRF). Results are recency-decay weighted (recent first) when recency_enabled, and modulated by a salience score (importance + access reinforcement) when salience_enabled — frequently-used memories float to top. Use from/to (ISO date/time or YYYY-MM-DD) to limit to a time window by updated_at. memory_type filters by user/agent/session.',
     inputSchema: { type: 'object', properties: {
       query: { type: 'string' }, user: { type: 'string' }, project: { type: 'string' }, session: { type: 'string' },
       mode: { type: 'string', enum: ['keyword', 'semantic', 'hybrid'], default: 'keyword' }, top_k: { type: 'number', default: 5 },
       from: { type: 'string', description: 'Lower bound (ISO date/time or YYYY-MM-DD) on updated_at.' },
       to: { type: 'string', description: 'Upper bound (ISO date/time or YYYY-MM-DD) on updated_at.' },
-      category: { type: 'string', enum: ['semantic', 'episodic', 'procedural'], description: '按记忆分类过滤（v1.5.0 新增）。' } },
+      category: { type: 'string', enum: ['semantic', 'episodic', 'procedural'], description: '按记忆分类过滤（v1.5.0 新增）。' },
+      memory_type: { type: 'string', enum: ['user', 'agent', 'session'], description: '按记忆类型过滤（v1.6.0 新增）。' } },
       required: ['query'] } },
   { name: 'list_memories', description: 'List recent memories, recency-weighted when recency_enabled. from/to limit to a time window by updated_at.',
     inputSchema: { type: 'object', properties: {
       user: { type: 'string' }, project: { type: 'string' }, session: { type: 'string' }, limit: { type: 'number', default: 20 },
       from: { type: 'string', description: 'Lower bound (ISO date/time or YYYY-MM-DD) on updated_at.' },
-      to: { type: 'string', description: 'Upper bound (ISO date/time or YYYY-MM-DD) on updated_at.' } } } },
+      to: { type: 'string', description: 'Upper bound (ISO date/time or YYYY-MM-DD) on updated_at.' },
+      memory_type: { type: 'string', enum: ['user', 'agent', 'session'], description: '按记忆类型过滤（v1.6.0 新增）。' } } } },
   { name: 'delete_memory', description: 'Delete a memory by id.',
     inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] } },
   { name: 'purge_memories', description: 'Lifecycle cleanup: delete memories older than N days (by updated_at) within an optional user/project/session scope. If expired_only is true, uses configured expiry_days; otherwise the days argument is used. Nothing happens if neither is set.',
@@ -482,7 +510,8 @@ const TOOLS = [
       text: { type: 'string', description: 'Raw conversation text, notes, or transcript to capture from.' },
       user: { type: 'string' }, project: { type: 'string' }, session: { type: 'string' },
       tags: { type: 'array', items: { type: 'string' } },
-      source: { type: 'object', description: 'Optional provenance, e.g. {type:"doc", ref:"docs-mcp-server://.../page"} — recorded on captured memories.' } },
+      source: { type: 'object', description: 'Optional provenance, e.g. {type:"doc", ref:"docs-mcp-server://.../page"} — recorded on captured memories.' },
+      memory_type: { type: 'string', enum: ['user', 'agent', 'session'], description: '记忆类型（v1.6.0 新增）：user=关于用户本人的持久事实/偏好，agent=Agent 自身运行记忆，session=仅当前会话相关的临时记忆。默认 user。' } },
       required: ['text'] } },
   { name: 'related_to', description: 'Knowledge-graph: given an entity (person/project/system/...), return the entities connected to it via relations (with relation type and occurrence count) across all memories, plus the source memories. Use type to filter by relation (e.g. responsible_for). Requires kg_enabled + extracted graph data.',
     inputSchema: { type: 'object', properties: {
@@ -640,12 +669,13 @@ function filters(p) {
   if (p.project) f.push({ term: { project: p.project } });
   if (p.session) f.push({ term: { session: p.session } });
   // type 字段：索引可能是显式 keyword 映射，或动态映射为 text(带 .keyword 子字段)。
-  // 用 bool.should 同时兼容两种情形，避免 term 命中分析后的 text 而查不到。
-  if (p.type) f.push({ bool: { should: [ { term: { type: p.type } }, { term: { 'type.keyword': p.type } } ] } });
-  if (p.category) f.push({ bool: { should: [ { term: { category: p.category } }, { term: { 'category.keyword': p.category } } ] } });
+  // 用 bool.should 同时兼容两种情形；必须 minimum_should_match:1 否则在 filter 上下文里 should 默认 0 匹配即视为通过，过滤失效。
+  if (p.type) f.push({ bool: { should: [ { term: { type: p.type } }, { term: { 'type.keyword': p.type } } ], minimum_should_match: 1 } });
+  if (p.category) f.push({ bool: { should: [ { term: { category: p.category } }, { term: { 'category.keyword': p.category } } ], minimum_should_match: 1 } });
+  if (p.memory_type) f.push({ bool: { should: [ { term: { memory_type: p.memory_type } }, { term: { 'memory_type.keyword': p.memory_type } } ], minimum_should_match: 1 } });
   if (p.min_confidence !== undefined && p.min_confidence !== null) f.push({ range: { confidence: { gte: Number(p.min_confidence) } } });
-  // 过期记忆不参与检索/去重召回（无 expires_at 或尚未过期才返回）
-  f.push({ bool: { should: [ { bool: { must_not: { exists: { field: 'expires_at' } } } }, { range: { expires_at: { gt: new Date().toISOString() } } } ] } });
+  // 过期记忆不参与检索/去重召回（无 expires_at 或尚未过期才返回）；minimum_should_match:1 否则 should 在 filter 上下文恒通过
+  f.push({ bool: { should: [ { bool: { must_not: { exists: { field: 'expires_at' } } } }, { range: { expires_at: { gt: new Date().toISOString() } } } ], minimum_should_match: 1 } });
   return f;
 }
 
@@ -795,7 +825,10 @@ async function reconcileFact(fact, scope) {
   const now = new Date();
   const expires_at = fact.expires_in_days ? new Date(now.getTime() + fact.expires_in_days * 86400000).toISOString() : null;
   const baseTags = ['auto-captured'];
-  const meta = { type: fact.type, category: fact.category || 'semantic', confidence: fact.confidence, scope: fact.scope, expires_at, fact_entities: fact.entities || [] };
+  const srcType = scope.source ? (typeof scope.source === 'object' ? scope.source.type : scope.source) : null;
+  const isAgent = srcType === 'agent';
+  const memType = fact.memory_type || scope.memory_type || (isAgent ? 'agent' : 'user');
+  const meta = { type: fact.type, category: fact.category || 'semantic', confidence: fact.confidence, scope: fact.scope, expires_at, fact_entities: fact.entities || [], memory_type: memType };
   if (CONFIG.fact_confidence_threshold > 0 && fact.confidence < CONFIG.fact_confidence_threshold) {
     return { action: 'skipped_low_conf', id: null };
   }
@@ -951,6 +984,7 @@ async function doAdd(a) {
     type: a.type || null,
     category: a.category || 'semantic',
     confidence: (a.confidence !== undefined && a.confidence !== null) ? Number(a.confidence) : null,
+    memory_type: a.memory_type || 'user',
     access_count: 0,
     last_accessed_at: now,
     expires_at: a.expires_at || null,
@@ -1019,10 +1053,30 @@ function hitsToRows(res) {
     confidence: (h._source.confidence !== undefined && h._source.confidence !== null) ? Number(h._source.confidence) : null,
     access_count: (h._source.access_count !== undefined && h._source.access_count !== null) ? Number(h._source.access_count) : 0,
     last_accessed_at: h._source.last_accessed_at || null,
+    memory_type: h._source.memory_type || 'user',
     expires_at: h._source.expires_at || null }));
 }
+// v1.6.0: 强化回环——每次搜索返回的记忆，其 access_count+1、last_accessed_at=now（fire-and-forget，不阻塞响应）
+async function bumpAccess(ids) {
+  if (!ids || !ids.length) return;
+  const now = new Date().toISOString();
+  try {
+    if (CONFIG.es_url && client) {
+      await Promise.all(ids.map(id => client.update({
+        index: CONFIG.es_index, id,
+        script: { source: 'ctx._source.access_count = (ctx._source.access_count ?: 0) + 1; ctx._source.last_accessed_at = params.t', lang: 'painless', params: { t: now } },
+        retry_on_conflict: 2
+      }).catch(() => {})));
+    } else {
+      const d = sqliteInit();
+      const ph = ids.map(() => '?').join(',');
+      d.prepare('UPDATE memories SET access_count = access_count + 1, last_accessed_at = ? WHERE id IN (' + ph + ')').run(now, ...ids);
+    }
+  } catch (e) {}
+}
 async function doSearch(a) {
-  if (!CONFIG.es_url || !client) return sqliteSearch(a);
+  const finish = (res) => { if (res && res.length) bumpAccess(res.map(r => r.id)).catch(() => {}); return res; };
+  if (!CONFIG.es_url || !client) { const res = await sqliteSearch(a); return finish(res); }
   const mode = a.mode || 'keyword';
   const top_k = a.top_k || 5;
   const filter = filters(a);
@@ -1033,12 +1087,12 @@ async function doSearch(a) {
   if (mode === 'keyword') {
     const must = a.query ? [{ match: { content: a.query } }] : [{ match_all: {} }];
     const body = { query: { bool: { must, filter } }, size: top_k };
-    return applyRecency(rerankWithContext(hitsToRows(await client.search({ index: CONFIG.es_index, body })), a.query || ''));
+    return finish(applyRecency(rerankWithContext(hitsToRows(await client.search({ index: CONFIG.es_index, body })), a.query || '')));
   }
   if (mode === 'semantic') {
     const vec = await embed(a.query);
     const body = { query: { bool: { filter } }, knn: { field: 'embedding', query_vector: vec, k: top_k, num_candidates: 100 }, size: top_k };
-    return applyRecency(rerankWithContext(hitsToRows(await client.search({ index: CONFIG.es_index, body })), a.query || ''));
+    return finish(applyRecency(rerankWithContext(hitsToRows(await client.search({ index: CONFIG.es_index, body })), a.query || '')));
   }
   // hybrid: client-side Reciprocal Rank Fusion (avoids ES RRF license requirement)
   const vec = await embed(a.query);
@@ -1062,11 +1116,12 @@ async function doSearch(a) {
       confidence: (h._source.confidence !== undefined && h._source.confidence !== null) ? Number(h._source.confidence) : null,
       access_count: (h._source.access_count !== undefined && h._source.access_count !== null) ? Number(h._source.access_count) : 0,
       last_accessed_at: h._source.last_accessed_at || null,
+      memory_type: h._source.memory_type || 'user',
       expires_at: h._source.expires_at || null });
   });
   add(kwRes.hits.hits);
   add(knnRes.hits.hits);
-  return applyRecency(rerankWithContext([...merged.values()].sort((a, b) => b.score - a.score), a.query || '')).slice(0, top_k);
+  return finish(applyRecency(rerankWithContext([...merged.values()].sort((a, b) => b.score - a.score), a.query || '')).slice(0, top_k));
 }
 async function doList(a) {
   if (!CONFIG.es_url || !client) return sqliteList(a);
@@ -1084,8 +1139,9 @@ async function doList(a) {
     confidence: (h._source.confidence !== undefined && h._source.confidence !== null) ? Number(h._source.confidence) : null,
     access_count: (h._source.access_count !== undefined && h._source.access_count !== null) ? Number(h._source.access_count) : 0,
     last_accessed_at: h._source.last_accessed_at || null,
+    memory_type: h._source.memory_type || 'user',
     expires_at: h._source.expires_at || null }));
-  return applyRecency(rows).slice(0, a.limit || 20);
+  return applyRecency(rerankWithContext(rows, '')).slice(0, a.limit || 20);
 }
 async function doDelete(id) {
   if (!CONFIG.es_url || !client) { sqliteDelete(id); return; }
@@ -1123,6 +1179,7 @@ async function doUpdate(id, patch) {
     if (patch.type !== undefined) { sets.push('type=?'); params.push(patch.type || null); }
     if (patch.category !== undefined) { sets.push('category=?'); params.push(patch.category || 'semantic'); }
     if (patch.confidence !== undefined) { sets.push('confidence=?'); params.push(patch.confidence); }
+    if (patch.memory_type !== undefined) { sets.push('memory_type=?'); params.push(patch.memory_type); }
     if (patch.access_count !== undefined) { sets.push('access_count=?'); params.push(patch.access_count); }
     if (patch.last_accessed_at !== undefined) { sets.push('last_accessed_at=?'); params.push(patch.last_accessed_at); }
     if (patch.expires_at !== undefined) { sets.push('expires_at=?'); params.push(patch.expires_at || null); }
@@ -1164,6 +1221,7 @@ async function doUpdate(id, patch) {
   if (patch.type !== undefined) doc.type = patch.type || null;
   if (patch.category !== undefined) doc.category = patch.category || 'semantic';
   if (patch.confidence !== undefined) doc.confidence = patch.confidence;
+  if (patch.memory_type !== undefined) doc.memory_type = patch.memory_type;
   if (patch.access_count !== undefined) doc.access_count = patch.access_count;
   if (patch.last_accessed_at !== undefined) doc.last_accessed_at = patch.last_accessed_at;
   if (patch.expires_at !== undefined) doc.expires_at = patch.expires_at || null;
@@ -1181,7 +1239,7 @@ async function doUpdate(id, patch) {
 
 // ---- MCP server factory (one instance per SSE connection) ----
 function createServer() {
-  const server = new Server({ name: 'ai-memory', version: '1.5.3' }, { capabilities: { tools: {} } });
+  const server = new Server({ name: 'ai-memory', version: SERVER_VERSION }, { capabilities: { tools: {} } });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
@@ -1201,7 +1259,7 @@ function createServer() {
         return { content: [{ type: 'text', text: 'Purged ' + n + ' memories older than ' + days + ' days.' }] };
       }
       if (name === 'capture_memory') {
-        const r = await captureText(args.text || '', { user: args.user, project: args.project, session: args.session, tags: args.tags, source: args.source });
+        const r = await captureText(args.text || '', { user: args.user, project: args.project, session: args.session, tags: args.tags, source: args.source, memory_type: args.memory_type });
         return { content: [{ type: 'text', text: JSON.stringify(r, null, 2) }] };
       }
       if (name === 'related_to') {
@@ -1239,7 +1297,7 @@ try { ADMIN_HTML = fs.readFileSync(path.join(__dirname, 'admin.html'), 'utf8'); 
 
 // ---- Docs (interface reference for admin help page; TOOLS reused so it stays in sync) ----
 const DOCS = {
-  server_version: '1.5.3',
+  server_version: SERVER_VERSION,
   overview: 'AI Memory 是记忆体 MCP 服务：默认基于 Elasticsearch，当 es_url 留空时自动降级为本地 SQLite 文件库（memories.db），均无需额外部署即可运行。提供记忆的存储(add)、查询(search/list)、编辑、删除能力，支持关键词(BM25)、语义(kNN 向量)与混合(RRF 应用层融合)三种检索模式。本管理界面可管理记忆数据、配置数据库与嵌入模型。',
   transport: 'MCP 通过 SSE 暴露：客户端连接 GET /sse 建立会话，工具调用经 POST /message 转发(JSON-RPC 2.0)。',
   tools: TOOLS,
@@ -1268,6 +1326,7 @@ const DOCS = {
     { key: 'dedup_enabled', desc: '记忆去重合并开关（true/false），默认 true。开启后相似内容会合并到已有记忆而非新增。' },
     { key: 'dedup_threshold', desc: '合并相似度阈值（0.7~1.0），默认 0.92。余弦相似度 >= 阈值才合并。' },
     { key: 'recency_enabled', desc: '时序加权开关（true/false），默认 true。检索/列出时对结果按更新时间做指数衰减加权（近期记忆优先）。' },
+    { key: 'salience_enabled', desc: 'v1.6.0: salience 评分开关（true/false），默认 true。salience = 0.5*重要性(confidence) + 0.5*访问强化(access_count 归一)，夹 [0,1]；每次搜索命中的记忆会自动 access_count+1、last_accessed_at=now（强化回环），常用记忆在排序中上浮。recency 衰减由 recency_enabled 单独处理。' },
     { key: 'recency_half_life', desc: '时序半衰期（天），默认 30。记忆年龄每过这么多天，检索权重衰减一半。' },
     { key: 'expiry_days', desc: '记忆过期天数（0=不过期），默认 0。配合 lifecycle_policy=expire 自动/手动清理超期记忆。' },
     { key: 'lifecycle_policy', desc: '生命周期策略：none（永久保留，仅时序加权）/ expire（超过 expiry_days 的记忆被清理）。默认 none。' },
@@ -1384,7 +1443,7 @@ const httpServer = http.createServer(async (req, res) => {
       let esOk = false;
       if (client) { try { esOk = await client.ping(); } catch (e) {} }
       return sendJson(res, 200, {
-        ok: true, version: '1.5.0', store: CONFIG.es_url ? 'elasticsearch' : 'sqlite', es_connected: esOk,
+        ok: true, version: SERVER_VERSION, store: CONFIG.es_url ? 'elasticsearch' : 'sqlite', es_connected: esOk,
         config: { es_url: CONFIG.es_url, es_index: CONFIG.es_index, es_user: CONFIG.es_user,
           embedding_url: CONFIG.embedding_url, embedding_model: CONFIG.embedding_model,
           embedding_enabled: !!CONFIG.embedding_url, llm_enabled: CONFIG.llm_enabled,
@@ -1450,7 +1509,7 @@ const httpServer = http.createServer(async (req, res) => {
     // --- REST: auto-capture ---
     if (url.pathname === '/api/capture' && req.method === 'POST') {
       const b = await readBody(req);
-      const r = await captureText(b.text || '', { user: b.user, project: b.project, session: b.session, tags: b.tags, source: b.source });
+      const r = await captureText(b.text || '', { user: b.user, project: b.project, session: b.session, tags: b.tags, source: b.source, memory_type: b.memory_type });
       return sendJson(res, 200, { ok: true, ...r });
     }
     // --- REST: backend self-test (embedding / llm / kg; local or cloud) ---
@@ -1486,10 +1545,12 @@ const httpServer = http.createServer(async (req, res) => {
       const to = url.searchParams.get('to') || '';
       const type = url.searchParams.get('type') || '';
       const category = url.searchParams.get('category') || '';
+      const memory_type = url.searchParams.get('memory_type') || '';
       const minConf = url.searchParams.get('min_confidence') || '';
       const filt = { limit, project, user, from, to };
       if (type) filt.type = type;
       if (category) filt.category = category;
+      if (memory_type) filt.memory_type = memory_type;
       if (minConf) filt.min_confidence = Number(minConf);
       let rows;
       if (q) rows = await doSearch({ query: q, mode, top_k: limit, project, user, from, to, ...filt });

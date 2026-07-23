@@ -86,11 +86,12 @@
     <div style="flex:0 0 160px"><label>事实类型 (type)</label><input id="ftype" placeholder="如 preference（留空=全部）" /></div>
     <div style="flex:0 0 130px"><label>最低置信度</label><input id="fconf" type="number" step="0.05" min="0" max="1" placeholder="0-1" /></div>
     <div style="flex:0 0 160px"><label>分类 (category)</label><select id="fcat"><option value="">全部</option><option value="semantic">semantic</option><option value="episodic">episodic</option><option value="procedural">procedural</option></select></div>
+    <div style="flex:0 0 170px"><label>记忆类型 (memory_type)</label><select id="fmem"><option value="">全部</option><option value="user">user（用户画像）</option><option value="agent">agent（Agent 自身）</option><option value="session">session（会话临时）</option></select></div>
     <div style="flex:0 0 auto"><button onclick="runSearch()">搜索</button></div>
   </div>
   <div id="data-msg"></div>
   <table id="tbl">
-    <thead><tr><th>内容</th><th>项目</th><th>会话</th><th>标签</th><th>类型</th><th>分类</th><th>创建</th><th>更新</th><th>历史</th><th>分</th><th></th></tr></thead>
+    <thead><tr><th>内容</th><th>项目</th><th>会话</th><th>标签</th><th>类型</th><th>分类</th><th>记忆类型</th><th>创建</th><th>更新</th><th>历史</th><th>分</th><th>显著性</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </div>
@@ -298,13 +299,14 @@ async function runSearch() {
   const mode = $('#mode').value;
   const limit = $('#limit').value;
   const from = $('#from').value, to = $('#to').value;
-  const ftype = $('#ftype').value.trim(), fconf = $('#fconf').value.trim(), fcat = $('#fcat').value;
+  const ftype = $('#ftype').value.trim(), fconf = $('#fconf').value.trim(), fcat = $('#fcat').value, fmem = $('#fmem').value;
   let url = '/api/memories?limit=' + encodeURIComponent(limit) + '&mode=' + encodeURIComponent(mode);
   if (q) url += '&q=' + encodeURIComponent(q);
   if (from) url += '&from=' + encodeURIComponent(from);
   if (to) url += '&to=' + encodeURIComponent(to);
   if (ftype) url += '&type=' + encodeURIComponent(ftype);
   if (fcat) url += '&category=' + encodeURIComponent(fcat);
+  if (fmem) url += '&memory_type=' + encodeURIComponent(fmem);
   if (fconf) url += '&min_confidence=' + encodeURIComponent(fconf);
   showMsg('#data-msg', '查询中…', 'info');
   try {
@@ -323,10 +325,12 @@ async function runSearch() {
         '<td>' + tags + '</td>' +
         '<td>' + esc(rw.type || '-') + '</td>' +
         '<td>' + esc(rw.category || 'semantic') + '</td>' +
+        '<td>' + esc(rw.memory_type || 'user') + '</td>' +
         '<td class="muted">' + esc(created) + '</td>' +
         '<td class="muted">' + esc(updated) + '</td>' +
         '<td>' + histCell + '</td>' +
         '<td class="muted">' + (rw.score!=null?rw.score.toFixed(2):'-') + '</td>' +
+        '<td class="muted" title="access_count=' + (rw.access_count||0) + '">' + (rw.salience!=null?rw.salience.toFixed(2):'-') + '</td>' +
         '<td class="actions"><button class="ghost" onclick="openEdit(\'' + rw.id + '\')">编辑</button> ' +
         '<button class="danger" onclick="del(\'' + rw.id + '\')">删除</button></td>';
       tb.appendChild(tr);

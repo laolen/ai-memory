@@ -69,7 +69,7 @@
 <header>
   <h1>AI Memory 管理界面</h1>
   <div class="status">
-    <span id="st-es"><span class="dot bad"></span>ES 未连接</span>
+    <span id="st-qdrant"><span class="dot bad"></span>Qdrant 未连接</span>
     <span id="st-emb"><span class="dot warn"></span>向量未启用</span>
   </div>
 </header>
@@ -132,16 +132,13 @@
 <!-- 配置 -->
 <div class="pane" id="pane-config">
   <div class="card">
-    <h3 style="margin-top:0">数据库 (Elasticsearch)</h3>
+    <h3 style="margin-top:0">向量数据库 (Qdrant)</h3>
+    <p class="muted" style="margin:4px 0">Qdrant 无需用户名 / 密码（内网部署默认无鉴权；若日后启用 API Key 再补字段）。</p>
     <div class="row">
-      <div><label>ES 地址</label><input id="c-es-url" /></div>
-      <div><label>索引名</label><input id="c-es-index" /></div>
+      <div><label>Qdrant 地址</label><input id="c-qdrant-url" placeholder="http://192.168.110.248:6333" /></div>
+      <div><label>集合名 (collection)</label><input id="c-qdrant-coll" placeholder="memories" /></div>
     </div>
-    <div class="row">
-      <div><label>用户名</label><input id="c-es-user" /></div>
-      <div><label>密码</label><input id="c-es-pwd" type="text" placeholder="ES 密码（明文显示）" /></div>
-    </div>
-    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('db')">测试 ES 连接</button><span id="t-db" class="test-msg"></span></div>
+    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('db')">测试 Qdrant 连接</button><span id="t-db" class="test-msg"></span></div>
     <h3>模型 API (嵌入/向量)</h3>
     <p class="muted" style="margin:4px 0">嵌入支持本地（Ollama/llama-embed，API Key 留空）或云端（OpenAI 兼容 /v1/embeddings，填对应 Key）。</p>
     <div class="row">
@@ -360,16 +357,18 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
 });
 
 function setStatus(h) {
-  const es = $('#st-es'), emb = $('#st-emb');
-  if (h.es_connected) { es.innerHTML = '<span class="dot ok"></span>ES 已连接'; }
-  else { es.innerHTML = '<span class="dot bad"></span>ES 未连接'; }
+  const db = $('#st-qdrant'), emb = $('#st-emb');
+  if (h.store === 'qdrant' && h.qdrant_connected) { db.innerHTML = '<span class="dot ok"></span>Qdrant 已连接'; }
+  else if (h.store === 'sqlite') { db.innerHTML = '<span class="dot warn"></span>SQLite 降级（无 Qdrant）'; }
+  else if (h.store === 'elasticsearch') { db.innerHTML = '<span class="dot warn"></span>ES 已连接（历史后端）'; }
+  else { db.innerHTML = '<span class="dot bad"></span>Qdrant 未连接'; }
   if (h.config && h.config.embedding_enabled) { emb.innerHTML = '<span class="dot ok"></span>向量已启用'; }
   else { emb.innerHTML = '<span class="dot warn"></span>向量未启用'; }
 }
 
 async function health() {
   try { const r = await fetch('/api/health'); const j = await r.json(); setStatus(j); return j; }
-  catch (e) { $('#st-es').innerHTML = '<span class="dot bad"></span>服务离线'; return null; }
+  catch (e) { $('#st-qdrant').innerHTML = '<span class="dot bad"></span>服务离线'; return null; }
 }
 setInterval(health, 8000); health();
 
@@ -442,8 +441,7 @@ async function del(id) {
 
 async function loadConfig() {
   const r = await fetch('/api/config'); const c = await r.json();
-  $('#c-es-url').value = c.es_url || ''; $('#c-es-index').value = c.es_index || '';
-  $('#c-es-user').value = c.es_user || ''; $('#c-es-pwd').value = c.es_pwd || '';
+  $('#c-qdrant-url').value = c.qdrant_url || ''; $('#c-qdrant-coll').value = c.qdrant_collection || 'memories';
   $('#c-emb-url').value = c.embedding_url || ''; $('#c-emb-model').value = c.embedding_model || '';
   $('#c-emb-key').value = c.embedding_api_key ? '******' : '';
   $('#c-dedup').checked = (c.dedup_enabled !== false);
@@ -480,8 +478,7 @@ async function loadConfig() {
 
 async function saveConfig() {
   const body = {
-    es_url: $('#c-es-url').value, es_index: $('#c-es-index').value,
-    es_user: $('#c-es-user').value, es_pwd: $('#c-es-pwd').value,
+    qdrant_url: $('#c-qdrant-url').value.trim(), qdrant_collection: $('#c-qdrant-coll').value.trim() || 'memories',
     embedding_url: $('#c-emb-url').value, embedding_model: $('#c-emb-model').value,
     embedding_api_key: $('#c-emb-key').value,
     dedup_enabled: $('#c-dedup').checked,
@@ -525,7 +522,7 @@ async function saveConfig() {
     const iv = setInterval(async () => {
       tries++;
       const h = await health();
-      if (h && h.es_connected) { clearInterval(iv); showMsg('#cfg-msg', '✅ 服务已重启，配置生效。', 'ok'); }
+      if (h && h.qdrant_connected) { clearInterval(iv); showMsg('#cfg-msg', '✅ 服务已重启，配置生效。', 'ok'); }
       else if (tries > 20) { clearInterval(iv); showMsg('#cfg-msg', '重启较慢，请稍后刷新页面确认。', 'info'); }
     }, 1500);
   } else { showMsg('#cfg-msg', '保存失败', 'err'); }
@@ -552,9 +549,7 @@ async function testBackend(type) {
     body.fact_confidence_threshold = Number($('#c-fact-conf').value) || 0.5;
     try { body.fact_types = JSON.parse($('#c-fact-types').value || '[]'); } catch (e) {}
   } else if (type === 'db') {
-    body.es_url = val('c-es-url'); body.es_index = val('c-es-index');
-    body.es_user = val('c-es-user');
-    const p = val('c-es-pwd'); if (p) body.es_pwd = p;
+    body.qdrant_url = val('c-qdrant-url'); body.qdrant_collection = val('c-qdrant-coll');
   }
   try {
     const r = await fetch('/api/test-backend', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -584,14 +579,14 @@ async function runCapture() {
 }
 
 async function diagnose() {
-  showMsg('#cfg-msg', '正在测试 ES 与 Embedding 连接…', 'info');
+  showMsg('#cfg-msg', '正在测试 Qdrant 与 Embedding 连接…', 'info');
   try {
     const r = await fetch('/api/diagnose', { method: 'POST' });
     const j = await r.json();
-    const es = j.es || {}, emb = j.embedding || {};
-    const esTxt = es.ok ? ('ES ✅ 已连接（索引 ' + es.index + '，文档数 ' + es.docs + '）') : ('ES ❌ ' + (es.error || '未连接'));
+    const db = j.qdrant || {}, emb = j.embedding || {};
+    const dbTxt = db.ok ? ('Qdrant ✅ 已连接（集合 ' + (db.collection || db.index || '') + '，文档数 ' + (db.docs != null ? db.docs : '?') + '）') : ('Qdrant ❌ ' + (db.error || db.reason || '未连接'));
     const embTxt = emb.ok ? ('Embedding ✅ 模型 ' + emb.model + '，维度 ' + emb.dims + '，耗时 ' + emb.ms + 'ms') : ('Embedding ❌ ' + (emb.error || emb.reason || '不可用'));
-    showMsg('#cfg-msg', esTxt + '　|　' + embTxt, 'ok');
+    showMsg('#cfg-msg', dbTxt + '　|　' + embTxt, 'ok');
   } catch (e) { showMsg('#cfg-msg', '测试失败: ' + e, 'err'); }
 }
 

@@ -91,7 +91,7 @@
   </div>
   <div id="data-msg"></div>
   <table id="tbl">
-    <thead><tr><th>内容</th><th>项目</th><th>会话</th><th>标签</th><th>类型</th><th>分类</th><th>记忆类型</th><th>创建</th><th>更新</th><th>历史</th><th>分</th><th>显著性</th><th></th></tr></thead>
+    <thead><tr><th>内容</th><th>项目</th><th>会话</th><th>标签</th><th>类型</th><th>分类</th><th>记忆类型</th><th>创建</th><th>更新</th><th>最近访问</th><th>历史</th><th>分</th><th>显著性</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </div>
@@ -319,6 +319,7 @@ async function runSearch() {
       const tags = (rw.tags || []).map(t => '<span class="tag">' + esc(t) + '</span>').join('');
       const created = (rw.created_at||'').replace('T',' ').slice(0,19);
       const updated = (rw.updated_at||'').replace('T',' ').slice(0,19);
+      const lastAcc = (rw.last_accessed_at||'').replace('T',' ').slice(0,19);
       const histCell = (rw.history && rw.history.length) ? '<a class="hlink" onclick="showHistory(\'' + rw.id + '\')">' + rw.history.length + ' 版</a>' : '-';
       tr.innerHTML = '<td class="content">' + esc(rw.content) + '</td>' +
         '<td>' + esc(rw.project || '-') + '</td><td>' + esc(rw.session || '-') + '</td>' +
@@ -328,6 +329,7 @@ async function runSearch() {
         '<td>' + esc(rw.memory_type || 'user') + '</td>' +
         '<td class="muted">' + esc(created) + '</td>' +
         '<td class="muted">' + esc(updated) + '</td>' +
+        '<td class="muted">' + (lastAcc ? esc(lastAcc) : '<span title="尚未被访问/强化">—</span>') + '</td>' +
         '<td>' + histCell + '</td>' +
         '<td class="muted">' + (rw.score!=null?rw.score.toFixed(2):'-') + '</td>' +
         '<td class="muted" title="access_count=' + (rw.access_count||0) + '">' + (rw.salience!=null?rw.salience.toFixed(2):'-') + '</td>' +

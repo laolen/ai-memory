@@ -161,7 +161,9 @@ function recencyFactor(ts) {
 }
 function applyRecency(rows) {
   if (!CONFIG.recency_enabled) return rows;
-  rows.forEach(r => { r.score = (r.score != null ? r.score : 1) * recencyFactor(r.updated_at || r.created_at); });
+  // v1.6.0+: 时间衰减以「最近访问/强化时间」last_accessed_at 为基准（未被访问则回退 updated_at/created_at），
+  // 符合人类记忆模型——被反复回想/调用的记忆保持新鲜，长期不被访问的记忆自然衰减。
+  rows.forEach(r => { r.score = (r.score != null ? r.score : 1) * recencyFactor(r.last_accessed_at || r.updated_at || r.created_at); });
   rows.sort((a, b) => (b.score || 0) - (a.score || 0));
   return rows;
 }
@@ -482,7 +484,7 @@ const TOOLS = [
       merge: { type: 'boolean', description: 'Allow merging with a highly similar existing memory. Default: follows global dedup_enabled config. Set false to always create a new entry.' },
       source: { type: 'object', description: 'Optional provenance, e.g. {type:"doc", ref:"docs-mcp-server://.../page"} — recorded on the memory and shown in the knowledge graph. v1.5.0: type 可填 human/agent/tool/system 以参与来源信任加权。' } },
       required: ['content', 'user'] } },
-  { name: 'search_memories', description: 'Search memories. mode: keyword (BM25), semantic (kNN), hybrid (RRF). Results are recency-decay weighted (recent first) when recency_enabled, and modulated by a salience score (importance + access reinforcement) when salience_enabled — frequently-used memories float to top. Use from/to (ISO date/time or YYYY-MM-DD) to limit to a time window by updated_at. memory_type filters by user/agent/session.',
+  { name: 'search_memories', description: 'Search memories. mode: keyword (BM25), semantic (kNN), hybrid (RRF). Results are recency-decay weighted (recent first) when recency_enabled — decay basis is each memory\'s last access/reinforcement time (last_accessed_at), falling back to updated_at, so frequently-recalled memories stay fresh and long-unused ones decay (human-memory model). Also modulated by a salience score (importance + access reinforcement) when salience_enabled. Use from/to (ISO date/time or YYYY-MM-DD) to limit to a time window by updated_at. memory_type filters by user/agent/session.',
     inputSchema: { type: 'object', properties: {
       query: { type: 'string' }, user: { type: 'string' }, project: { type: 'string' }, session: { type: 'string' },
       mode: { type: 'string', enum: ['keyword', 'semantic', 'hybrid'], default: 'keyword' }, top_k: { type: 'number', default: 5 },
@@ -1325,7 +1327,7 @@ const DOCS = {
     { key: 'embedding_api_key', desc: '云端 Embedding 的 API Key（OpenAI 兼容 /v1/embeddings 需要 Bearer 鉴权）。本地 Ollama 嵌入留空即可。' },
     { key: 'dedup_enabled', desc: '记忆去重合并开关（true/false），默认 true。开启后相似内容会合并到已有记忆而非新增。' },
     { key: 'dedup_threshold', desc: '合并相似度阈值（0.7~1.0），默认 0.92。余弦相似度 >= 阈值才合并。' },
-    { key: 'recency_enabled', desc: '时序加权开关（true/false），默认 true。检索/列出时对结果按更新时间做指数衰减加权（近期记忆优先）。' },
+    { key: 'recency_enabled', desc: '时序加权开关（true/false），默认 true。检索/列出时对结果按「最近访问/强化时间」(last_accessed_at，未访问则回退 updated_at) 做指数衰减加权（近期被回想/调用的记忆优先，符合人类记忆模型）。' },
     { key: 'salience_enabled', desc: 'v1.6.0: salience 评分开关（true/false），默认 true。salience = 0.5*重要性(confidence) + 0.5*访问强化(access_count 归一)，夹 [0,1]；每次搜索命中的记忆会自动 access_count+1、last_accessed_at=now（强化回环），常用记忆在排序中上浮。recency 衰减由 recency_enabled 单独处理。' },
     { key: 'recency_half_life', desc: '时序半衰期（天），默认 30。记忆年龄每过这么多天，检索权重衰减一半。' },
     { key: 'expiry_days', desc: '记忆过期天数（0=不过期），默认 0。配合 lifecycle_policy=expire 自动/手动清理超期记忆。' },

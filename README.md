@@ -287,6 +287,11 @@ ssh root@192.168.110.128 'cd /opt/ai-memory && \
 
 ## 十二、版本
 
+- **v1.5.3**：把 `fact_entities` 兜底扩展到 `doUpdate` 全路径（supplement / contradict 覆盖 / dedup-merge 分支），云端模型在更新与新建场景均不再丢实体（与 doAdd 一致）
+- **v1.5.2**：修复云端模型（deepseek v4-flash/pro）`entities` 恒空——强化 `extractFacts` 提示词（entities 标 REQUIRED + 中文 few-shot）+ `reconcileFact` 透传 `fact_entities` + `doAdd` 加事实阶段实体兜底
+- **v1.5.1**：`llm_model` 可切更强模型（如 qwen3.5:9b / deepseek v4-pro）；修复 `source` 字符串 vs ES object mapping 冲突致库清空（`normalizeSource`）；中文关系枚举兼容
+- **v1.5.0**：补齐与 Mem0 的差距——实体链接加权检索、记忆分类（semantic/episodic/procedural）、Session 自动过期、来源信任治理 + Agent 事实、时序 ADD-only（`preserve_on_conflict`）、评测脚本 `eval/evaluate.js`
+- **v1.4.0**：事实抽取管线（`shouldCapture`→`extractFacts`→`judgeRelation`→`reconcileFact`），记忆新增 `type/confidence/access_count/last_accessed_at/expires_at`；修复出站 fetch 无超时卡死 + ES 读路径漏字段
 - **v1.3.3**：新增数据库（ES）自测；四个后端均可在 `/admin` 一键测试
 - **v1.3.2**：新增嵌入 / 捕获 LLM / 图谱三个后端自测（`POST /api/test-backend` + `testEmbedding/testChat/testKG`）
 - **v1.3.1**：本地 / 云端双支持（三个后端各自可选端点 + `api_key`，`authHeaders`/`chatJSON` 统一鉴权）

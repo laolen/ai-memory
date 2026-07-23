@@ -57,6 +57,7 @@ function loadConfig() {
     source_trust_weights: (f.source_trust_weights && typeof f.source_trust_weights === 'object') ? f.source_trust_weights : { human: 1.0, agent: 0.85, tool: 0.7, system: 0.6 },
     preserve_on_conflict: (f.preserve_on_conflict !== undefined) ? f.preserve_on_conflict : false,
     salience_enabled: (f.salience_enabled !== undefined) ? f.salience_enabled : true,
+    related_projects_enabled: (f.related_projects_enabled !== undefined) ? f.related_projects_enabled : true,
   };
 }
 function saveConfig(cfg) {
@@ -65,7 +66,7 @@ function saveConfig(cfg) {
 let CONFIG = loadConfig();
 let client = null;
 // v1.6.0: 单一版本常量，Server.version / health / DOCS 全部引用它，避免硬编码漂移
-const SERVER_VERSION = '1.6.0';
+const SERVER_VERSION = '1.7.0';
 // v1.6.0: salience 评分权重（显性的「衰减+强化」综合分，夹 [0,1]）
 // salience = W_IMP*重要性(confidence) + W_ACC*访问强化(access_count 归一)；recency 衰减由 applyRecency 单独处理，避免双重计数
 const SALIENCE_W_IMP = 0.5, SALIENCE_W_ACC = 0.5, SALIENCE_ACCESS_K = 10, SALIENCE_SCORE_W = 0.7;
@@ -99,6 +100,7 @@ function sqliteInit() {
   if (!_cols.has('expires_at')) db.exec('ALTER TABLE memories ADD COLUMN expires_at TEXT');
   if (!_cols.has('category')) db.exec('ALTER TABLE memories ADD COLUMN category TEXT');
   if (!_cols.has('memory_type')) db.exec('ALTER TABLE memories ADD COLUMN memory_type TEXT');
+  db.exec('CREATE TABLE IF NOT EXISTS project_links (from_project TEXT, to_project TEXT, strength REAL, note TEXT, created_at TEXT, PRIMARY KEY(from_project, to_project))');
   return db;
 }
 function rowToDoc(r) {
@@ -206,15 +208,56 @@ function sourceTypeOf(source) {
 }
 // v1.5.1: ES mapping 把 source 锁成 object 类型；捕获 API 传的是字符串（"human"），
 // 直接写 ES 会 document_parsing_exception。归一化：字符串 → {type}，对象原样，空 → null。
-function normalizeSource(s) {
+function normalizeSource(s, trigger) {
   if (!s) return null;
-  if (typeof s === 'string') return { type: s };
-  return s;
+  let o;
+  if (typeof s === 'string') o = { type: s };
+  else o = Object.assign({}, s);
+  if (!o.captured_at) o.captured_at = new Date().toISOString();
+  if (trigger && !o.trigger) o.trigger = trigger;
+  return o;
 }
 function sourceTrustFactor(source) {
   if (!CONFIG.source_trust_enabled) return 1;
   const w = CONFIG.source_trust_weights && CONFIG.source_trust_weights[sourceTypeOf(source)];
   return (w && w > 0) ? w : 1;
+}
+// v1.7.0: 项目间强弱关联 —— 一条记忆属于某 project；project 之间可建立有向关联(强度 0~1)，
+// 检索/列出某项目时若开启 related_projects_enabled，则同时借鉴其关联项目的记忆，并按强度衰减排序。
+function relationDecay(strength) {
+  const s = Math.max(0, Math.min(1, Number(strength) || 0));
+  return 0.2 + 0.6 * s; // 强(1)→0.8, 中(0.5)→0.5, 弱(0.2)→0.32：关联越弱越靠后，但强关联记忆仍可能浮在主项目弱相关记忆之前
+}
+// 是否启用跨项目借鉴：请求级 include_related 优先，否则用全局配置
+function relEnabled(a) { return (a && a.include_related !== undefined) ? !!a.include_related : CONFIG.related_projects_enabled; }
+let projectLinksCache = null;
+function loadProjectLinks() {
+  try {
+    const d = sqliteInit();
+    projectLinksCache = d.prepare('SELECT from_project, to_project, strength, note, created_at FROM project_links').all();
+  } catch (e) { projectLinksCache = []; }
+  return projectLinksCache || [];
+}
+// 双向查询：无论从哪一端定义，都视为相关
+function getProjectLinks(project) {
+  if (projectLinksCache === null) loadProjectLinks();
+  return (projectLinksCache || [])
+    .filter(r => r.from_project === project || r.to_project === project)
+    .map(r => ({ to_project: r.from_project === project ? r.to_project : r.from_project, strength: r.strength, note: r.note }));
+}
+function upsertProjectLink(from, to, strength, note) {
+  if (!from || !to || from === to) return false;
+  const d = sqliteInit();
+  d.prepare('INSERT INTO project_links (from_project, to_project, strength, note, created_at) VALUES (?,?,?,?,?) ' +
+    'ON CONFLICT(from_project, to_project) DO UPDATE SET strength=excluded.strength, note=excluded.note, created_at=excluded.created_at')
+    .run(from, to, Number(strength) || 0, note || '', new Date().toISOString());
+  projectLinksCache = null;
+  return true;
+}
+function removeProjectLink(from, to) {
+  const d = sqliteInit();
+  d.prepare('DELETE FROM project_links WHERE from_project=? AND to_project=?').run(from, to);
+  projectLinksCache = null;
 }
 // v1.6.0: salience = 重要性(confidence) + 访问强化(access_count 归一)，夹 [0,1]。
 // recency 衰减由 applyRecency 单独处理，这里不重复计，避免双重加权。
@@ -482,7 +525,7 @@ const TOOLS = [
       category: { type: 'string', enum: ['semantic', 'episodic', 'procedural'], description: '记忆分类：semantic=持久事实/偏好，episodic=特定情境下的事件/决定，procedural=操作流程/沟通风格。默认 semantic。v1.5.0 新增。' },
       memory_type: { type: 'string', enum: ['user', 'agent', 'session'], description: '记忆类型（v1.6.0 新增）：user=关于用户本人的持久事实/偏好（用户画像类），agent=Agent 自身的运行记忆/习得，session=仅当前会话相关、会话结束后价值衰减的临时记忆。默认 user。' },
       merge: { type: 'boolean', description: 'Allow merging with a highly similar existing memory. Default: follows global dedup_enabled config. Set false to always create a new entry.' },
-      source: { type: 'object', description: 'Optional provenance, e.g. {type:"doc", ref:"docs-mcp-server://.../page"} — recorded on the memory and shown in the knowledge graph. v1.5.0: type 可填 human/agent/tool/system 以参与来源信任加权。' } },
+      source: { type: 'object', description: 'Optional provenance / 溯源, 例如 {type:"doc", ref:"docs-mcp-server://.../page", conversation_id:"...", message_id:"...", url:"https://...", file:"src/a.ts", line:42}。type 可填 human/agent/tool/system 以参与来源信任加权;系统会自动补 captured_at(捕获时间)与 trigger(add/capture)。在 admin 界面可点击「溯源」查看完整来源与内容演变。' } },
       required: ['content', 'user'] } },
   { name: 'search_memories', description: 'Search memories. mode: keyword (BM25), semantic (kNN), hybrid (RRF). Results are recency-decay weighted (recent first) when recency_enabled — decay basis is each memory\'s last access/reinforcement time (last_accessed_at), falling back to updated_at, so frequently-recalled memories stay fresh and long-unused ones decay (human-memory model). Also modulated by a salience score (importance + access reinforcement) when salience_enabled. Use from/to (ISO date/time or YYYY-MM-DD) to limit to a time window by updated_at. memory_type filters by user/agent/session.',
     inputSchema: { type: 'object', properties: {
@@ -512,9 +555,17 @@ const TOOLS = [
       text: { type: 'string', description: 'Raw conversation text, notes, or transcript to capture from.' },
       user: { type: 'string' }, project: { type: 'string' }, session: { type: 'string' },
       tags: { type: 'array', items: { type: 'string' } },
-      source: { type: 'object', description: 'Optional provenance, e.g. {type:"doc", ref:"docs-mcp-server://.../page"} — recorded on captured memories.' },
+      source: { type: 'object', description: 'Optional provenance / 溯源, 例如 {type:"doc", ref:"...", conversation_id:"...", url:"https://...", file:"src/a.ts", line:42}。系统自动补 captured_at 与 trigger=capture;admin 界面可点击「溯源」查看完整来源。' },
       memory_type: { type: 'string', enum: ['user', 'agent', 'session'], description: '记忆类型（v1.6.0 新增）：user=关于用户本人的持久事实/偏好，agent=Agent 自身运行记忆，session=仅当前会话相关的临时记忆。默认 user。' } },
       required: ['text'] } },
+  { name: 'manage_project_link', description: 'v1.7.0: 管理项目间的强弱关联。action=add/update 建立或修改从 from_project 到 to_project 的关联(强度 strength 0~1：1=强/0.6=中/0.3=弱)；action=remove 删除；action=list 列出全部。建立关联后,检索/列出某项目记忆时会同时借鉴其关联项目的记忆(按强度衰减排序),在"当前项目记忆"与"可借鉴的关联项目记忆"间建立桥梁。',
+    inputSchema: { type: 'object', properties: {
+      action: { type: 'string', enum: ['add', 'update', 'remove', 'list'], description: 'add/update 建立或修改关联；remove 删除；list 列出全部。' },
+      from_project: { type: 'string', description: '源项目名(关联起点)' },
+      to_project: { type: 'string', description: '目标项目名(关联终点；双向生效)' },
+      strength: { type: 'number', description: '关联强度 0~1：1=强、0.6=中、0.3=弱。默认 0.6。' },
+      note: { type: 'string', description: '可选备注(如"同属支付域")' } },
+      required: ['action'] } },
   { name: 'related_to', description: 'Knowledge-graph: given an entity (person/project/system/...), return the entities connected to it via relations (with relation type and occurrence count) across all memories, plus the source memories. Use type to filter by relation (e.g. responsible_for). Requires kg_enabled + extracted graph data.',
     inputSchema: { type: 'object', properties: {
       entity: { type: 'string', description: 'Entity name (alias accepted, normalized via kg_synonyms).' },
@@ -931,7 +982,7 @@ async function captureText(text, scope) {
   for (const c of candidates) {
     const m = { content: c.content, user: scope.user || 'auto', project: scope.project || null,
       session: scope.session || null, tags: Array.from(new Set([...(scope.tags || []), ...(c.tags || []), 'auto-captured'])) };
-    if (scope.source) m.source = scope.source;
+    if (scope.source) m.source = normalizeSource(scope.source, 'capture');
     try { const r = await doAdd(m); captured++; items.push({ id: r.id, merged: !!r.merged, content: c.content }); }
     catch (e) { skipped++; }
   }
@@ -990,7 +1041,7 @@ async function doAdd(a) {
     access_count: 0,
     last_accessed_at: now,
     expires_at: a.expires_at || null,
-    source: normalizeSource(a.source)
+    source: normalizeSource(a.source, 'add')
   };
   // v1.5.0: session 级记忆自动过期（session_ttl_hours>0 且未显式设 expires_at 时）
   if (a.session && !a.expires_at && CONFIG.session_ttl_hours > 0) {
@@ -1076,30 +1127,25 @@ async function bumpAccess(ids) {
     }
   } catch (e) {}
 }
-async function doSearch(a) {
-  const finish = (res) => { if (res && res.length) bumpAccess(res.map(r => r.id)).catch(() => {}); return res; };
-  if (!CONFIG.es_url || !client) { const res = await sqliteSearch(a); return finish(res); }
+async function searchProject(project, a, vec) {
+  const fa = Object.assign({}, a, { project });
+  const filter = filters(fa);
+  filter.push(...timeFilter(fa));
   const mode = a.mode || 'keyword';
   const top_k = a.top_k || 5;
-  const filter = filters(a);
-  filter.push(...timeFilter(a));
-  if ((mode === 'semantic' || mode === 'hybrid') && !CONFIG.embedding_url) {
-    throw new Error('semantic/hybrid requires embedding_url (not configured). Use mode=keyword.');
-  }
   if (mode === 'keyword') {
     const must = a.query ? [{ match: { content: a.query } }] : [{ match_all: {} }];
     const body = { query: { bool: { must, filter } }, size: top_k };
-    return finish(applyRecency(rerankWithContext(hitsToRows(await client.search({ index: CONFIG.es_index, body })), a.query || '')));
+    return applyRecency(rerankWithContext(hitsToRows(await client.search({ index: CONFIG.es_index, body })), a.query || ''));
   }
   if (mode === 'semantic') {
-    const vec = await embed(a.query);
-    const body = { query: { bool: { filter } }, knn: { field: 'embedding', query_vector: vec, k: top_k, num_candidates: 100 }, size: top_k };
-    return finish(applyRecency(rerankWithContext(hitsToRows(await client.search({ index: CONFIG.es_index, body })), a.query || '')));
+    const v = vec || await embed(a.query);
+    const body = { query: { bool: { filter } }, knn: { field: 'embedding', query_vector: v, k: top_k, num_candidates: 100 }, size: top_k };
+    return applyRecency(rerankWithContext(hitsToRows(await client.search({ index: CONFIG.es_index, body })), a.query || ''));
   }
-  // hybrid: client-side Reciprocal Rank Fusion (avoids ES RRF license requirement)
-  const vec = await embed(a.query);
+  const v = vec || await embed(a.query);
   const kwBody = { query: { bool: { must: a.query ? [{ match: { content: a.query } }] : [{ match_all: {} }], filter } }, size: top_k };
-  const knnBody = { query: { bool: { filter } }, knn: { field: 'embedding', query_vector: vec, k: top_k, num_candidates: 100 }, size: top_k };
+  const knnBody = { query: { bool: { filter } }, knn: { field: 'embedding', query_vector: v, k: top_k, num_candidates: 100 }, size: top_k };
   const [kwRes, knnRes] = await Promise.all([
     client.search({ index: CONFIG.es_index, body: kwBody }),
     client.search({ index: CONFIG.es_index, body: knnBody }),
@@ -1123,26 +1169,61 @@ async function doSearch(a) {
   });
   add(kwRes.hits.hits);
   add(knnRes.hits.hits);
-  return finish(applyRecency(rerankWithContext([...merged.values()].sort((a, b) => b.score - a.score), a.query || '')).slice(0, top_k));
+  return applyRecency(rerankWithContext([...merged.values()].sort((x, y) => y.score - x.score), a.query || '')).slice(0, top_k);
+}
+async function doSearch(a) {
+  const finish = (res) => { if (res && res.length) bumpAccess(res.map(r => r.id)).catch(() => {}); return res; };
+  // SQLite 路径：主项目 + 关联项目(按强度衰减)
+  if (!CONFIG.es_url || !client) {
+    let rows = await sqliteSearch(a);
+    if (relEnabled(a) && a.project) {
+      const links = getProjectLinks(a.project);
+      for (const lk of links) {
+        const rel = await sqliteSearch(Object.assign({}, a, { project: lk.to_project }));
+        const decay = relationDecay(lk.strength);
+        rel.forEach(r => { r.related_project = lk.to_project; r.relation_strength = lk.strength; r.relation_note = lk.note || null; r.score = (r.score != null ? r.score : 1) * decay; });
+        rows = rows.concat(rel);
+      }
+      rows.sort((x, y) => (y.score || 0) - (x.score || 0));
+    }
+    return finish(rows);
+  }
+  const mode = a.mode || 'keyword';
+  const needVec = (mode === 'semantic' || mode === 'hybrid');
+  if (needVec && !CONFIG.embedding_url) throw new Error('semantic/hybrid requires embedding_url (not configured). Use mode=keyword.');
+  const vec = needVec ? await embed(a.query) : null;
+  let rows = await searchProject(a.project || null, a, vec);
+  if (relEnabled(a) && a.project) {
+    const links = getProjectLinks(a.project);
+    for (const lk of links) {
+      const rel = await searchProject(lk.to_project, a, vec);
+      const decay = relationDecay(lk.strength);
+      rel.forEach(r => { r.related_project = lk.to_project; r.relation_strength = lk.strength; r.relation_note = lk.note || null; r.score = (r.score != null ? r.score : 1) * decay; });
+      rows = rows.concat(rel);
+    }
+    rows.sort((x, y) => (y.score || 0) - (x.score || 0));
+  }
+  return finish(rows);
 }
 async function doList(a) {
-  if (!CONFIG.es_url || !client) return sqliteList(a);
-  const filter = filters(a);
-  filter.push(...timeFilter(a));
-  const body = { query: { bool: { filter } }, sort: [{ updated_at: { order: 'desc' } }], size: a.limit || 20 };
-  const res = await client.search({ index: CONFIG.es_index, body });
-  const rows = res.hits.hits.map(h => ({
-    id: h._id, content: h._source.content, user: h._source.user, project: h._source.project,
-    session: h._source.session, tags: h._source.tags || [], created_at: h._source.created_at,
-    updated_at: h._source.updated_at, history: h._source.history || [],
-    entities: h._source.entities || [], relations: h._source.relations || [],     source: h._source.source || null, entity_names: h._source.entity_names || [],
-    type: h._source.type || null,
-    category: h._source.category || 'semantic',
-    confidence: (h._source.confidence !== undefined && h._source.confidence !== null) ? Number(h._source.confidence) : null,
-    access_count: (h._source.access_count !== undefined && h._source.access_count !== null) ? Number(h._source.access_count) : 0,
-    last_accessed_at: h._source.last_accessed_at || null,
-    memory_type: h._source.memory_type || 'user',
-    expires_at: h._source.expires_at || null }));
+  const listProject = async (project) => {
+    if (!CONFIG.es_url || !client) return sqliteList(Object.assign({}, a, { project }));
+    const fa = Object.assign({}, a, { project });
+    const filter = filters(fa); filter.push(...timeFilter(fa));
+    const body = { query: { bool: { filter } }, sort: [{ updated_at: { order: 'desc' } }], size: a.limit || 20 };
+    const res = await client.search({ index: CONFIG.es_index, body });
+    return hitsToRows(res);
+  };
+  let rows = (await listProject(a.project || null)).map(r => { r.related_project = null; return r; });
+  if (relEnabled(a) && a.project) {
+    const links = getProjectLinks(a.project);
+    for (const lk of links) {
+      const rel = await listProject(lk.to_project);
+      rel.forEach(r => { r.related_project = lk.to_project; r.relation_strength = lk.strength; r.relation_note = lk.note || null; });
+      rows = rows.concat(rel);
+    }
+  }
+  rows.sort((x, y) => new Date(y.updated_at || 0) - new Date(x.updated_at || 0));
   return applyRecency(rerankWithContext(rows, '')).slice(0, a.limit || 20);
 }
 async function doDelete(id) {
@@ -1275,6 +1356,13 @@ function createServer() {
       if (name === 'path_between') {
         const r = await pathBetween(args.a, args.b);
         return { content: [{ type: 'text', text: JSON.stringify(r, null, 2) }] };
+      }
+      if (name === 'manage_project_link') {
+        if (args.action === 'list') return { content: [{ type: 'text', text: JSON.stringify(loadProjectLinks(), null, 2) }] };
+        if (args.action === 'remove') { removeProjectLink(args.from_project, args.to_project); return { content: [{ type: 'text', text: 'removed' }] }; }
+        const ok = upsertProjectLink(args.from_project, args.to_project, args.strength, args.note);
+        if (!ok) return { content: [{ type: 'text', text: 'error: from_project / to_project 必填且不能相同' }], isError: true };
+        return { content: [{ type: 'text', text: 'ok' }] };
       }
       return { content: [{ type: 'text', text: 'unknown tool: ' + name }], isError: true };
     } catch (e) { return { content: [{ type: 'text', text: 'error: ' + e.message }], isError: true }; }
@@ -1536,6 +1624,21 @@ const httpServer = http.createServer(async (req, res) => {
       const a = url.searchParams.get('a') || ''; const b = url.searchParams.get('b') || '';
       return sendJson(res, 200, await pathBetween(a, b));
     }
+    // --- REST: project links (跨项目强弱关联, v1.7.0) ---
+    if (url.pathname === '/api/project-links') {
+      if (req.method === 'GET') return sendJson(res, 200, { links: loadProjectLinks() });
+      if (req.method === 'POST') {
+        const b = await readBody(req);
+        const ok = upsertProjectLink(b.from_project, b.to_project, b.strength, b.note);
+        if (!ok) return sendJson(res, 400, { ok: false, message: 'from_project / to_project 必填且不能相同' });
+        return sendJson(res, 200, { ok: true });
+      }
+      if (req.method === 'DELETE') {
+        const from = url.searchParams.get('from') || ''; const to = url.searchParams.get('to') || '';
+        removeProjectLink(from, to);
+        return sendJson(res, 200, { ok: true });
+      }
+    }
     // --- REST: memories list / search ---
     if (url.pathname === '/api/memories' && req.method === 'GET') {
       const q = url.searchParams.get('q') || '';
@@ -1549,11 +1652,13 @@ const httpServer = http.createServer(async (req, res) => {
       const category = url.searchParams.get('category') || '';
       const memory_type = url.searchParams.get('memory_type') || '';
       const minConf = url.searchParams.get('min_confidence') || '';
+      const incRel = url.searchParams.get('include_related');
       const filt = { limit, project, user, from, to };
       if (type) filt.type = type;
       if (category) filt.category = category;
       if (memory_type) filt.memory_type = memory_type;
       if (minConf) filt.min_confidence = Number(minConf);
+      if (incRel !== null) filt.include_related = (incRel === 'true' || incRel === '1');
       let rows;
       if (q) rows = await doSearch({ query: q, mode, top_k: limit, project, user, from, to, ...filt });
       else rows = await doList(filt);

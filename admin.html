@@ -49,6 +49,8 @@
   .muted { color: #8b949e; font-size: 12px; }
   .hlink { color: #58a6ff; cursor: pointer; }
   .hlink:hover { text-decoration: underline; }
+  tr.rel { background: #161b22; box-shadow: inset 3px 0 0 #d29922; }
+  .reltag { display: inline-block; background: #3d2d12; border: 1px solid #6e4b1f; color: #e3b341; border-radius: 10px; padding: 0 8px; font-size: 11px; margin-right: 4px; }
   .histbox { max-height: 240px; overflow: auto; border: 1px solid #30363d; border-radius: 6px; padding: 8px; margin-top: 4px; }
   .histitem { padding: 6px 0; border-bottom: 1px solid #21262d; font-size: 12.5px; word-break: break-word; }
   .histitem:last-child { border-bottom: none; }
@@ -72,6 +74,7 @@
   <div class="tab" data-pane="config">配置</div>
   <div class="tab" data-pane="help">使用帮助</div>
   <div class="tab" data-pane="graph">知识图谱</div>
+  <div class="tab" data-pane="links">项目关系</div>
 </div>
 
 <!-- 数据管理 -->
@@ -87,13 +90,37 @@
     <div style="flex:0 0 130px"><label>最低置信度</label><input id="fconf" type="number" step="0.05" min="0" max="1" placeholder="0-1" /></div>
     <div style="flex:0 0 160px"><label>分类 (category)</label><select id="fcat"><option value="">全部</option><option value="semantic">semantic</option><option value="episodic">episodic</option><option value="procedural">procedural</option></select></div>
     <div style="flex:0 0 170px"><label>记忆类型 (memory_type)</label><select id="fmem"><option value="">全部</option><option value="user">user（用户画像）</option><option value="agent">agent（Agent 自身）</option><option value="session">session（会话临时）</option></select></div>
+    <div style="flex:0 0 150px"><label>项目 (留空=全部)</label><input id="fproj" placeholder="如 payment" /></div>
+    <div style="flex:0 0 auto"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#8b949e"><input type="checkbox" id="frel" checked style="width:auto;margin:0" />包含关联项目</label></div>
     <div style="flex:0 0 auto"><button onclick="runSearch()">搜索</button></div>
   </div>
   <div id="data-msg"></div>
   <table id="tbl">
-    <thead><tr><th>内容</th><th>项目</th><th>会话</th><th>标签</th><th>类型</th><th>分类</th><th>记忆类型</th><th>创建</th><th>更新</th><th>最近访问</th><th>历史</th><th>分</th><th>显著性</th><th></th></tr></thead>
+    <thead><tr><th>内容</th><th>项目</th><th>会话</th><th>标签</th><th>类型</th><th>分类</th><th>记忆类型</th><th>创建</th><th>更新</th><th>最近访问</th><th>历史</th><th>溯源</th><th>分</th><th>显著性</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
+</div>
+
+<!-- 项目关系 -->
+<div class="pane" id="pane-links">
+  <div class="card">
+    <h3 style="margin-top:0">项目间强弱关联</h3>
+    <p class="muted" style="margin:4px 0">建立项目关联后,检索/列出某项目记忆时会同时借鉴其关联项目的记忆(按强度衰减排序)。关联双向生效。</p>
+    <div class="row">
+      <div><label>源项目 (from)</label><input id="lk-from" placeholder="如 payment" /></div>
+      <div><label>目标项目 (to)</label><input id="lk-to" placeholder="如 order" /></div>
+    </div>
+    <div class="row">
+      <div><label>关联强度</label>
+        <select id="lk-strength"><option value="1">强 (1.0)</option><option value="0.6" selected>中 (0.6)</option><option value="0.3">弱 (0.3)</option></select>
+      </div>
+      <div><label>备注</label><input id="lk-note" placeholder="如 同属支付域" /></div>
+    </div>
+    <button onclick="addLink()">添加 / 更新关联</button>
+    <div id="lk-msg" class="msg"></div>
+    <h3 style="margin-top:18px">已有关联</h3>
+    <table id="lk-tbl"><thead><tr><th>源项目</th><th>目标项目</th><th>强度</th><th>备注</th><th></th></tr></thead><tbody></tbody></table>
+  </div>
 </div>
 
 <!-- 配置 -->
@@ -262,6 +289,17 @@
   </div>
 </div>
 
+<!-- 溯源弹窗 -->
+<div class="modal" id="src-modal">
+  <div class="card">
+    <h3 style="margin-top:0">记忆溯源</h3>
+    <div id="src-body"></div>
+    <div class="actions-row">
+      <button class="ghost" onclick="closeSrc()">关闭</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = s => document.querySelector(s);
 let editingId = null;
@@ -274,6 +312,7 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   $('#pane-' + t.dataset.pane).classList.add('active');
   if (t.dataset.pane === 'config') loadConfig();
   if (t.dataset.pane === 'help') loadDocs();
+  if (t.dataset.pane === 'links') loadLinks();
 });
 
 function setStatus(h) {
@@ -300,8 +339,12 @@ async function runSearch() {
   const limit = $('#limit').value;
   const from = $('#from').value, to = $('#to').value;
   const ftype = $('#ftype').value.trim(), fconf = $('#fconf').value.trim(), fcat = $('#fcat').value, fmem = $('#fmem').value;
+  const fproj = $('#fproj').value.trim();
+  const frel = $('#frel').checked;
   let url = '/api/memories?limit=' + encodeURIComponent(limit) + '&mode=' + encodeURIComponent(mode);
   if (q) url += '&q=' + encodeURIComponent(q);
+  if (fproj) url += '&project=' + encodeURIComponent(fproj);
+  if (frel) url += '&include_related=true'; else url += '&include_related=false';
   if (from) url += '&from=' + encodeURIComponent(from);
   if (to) url += '&to=' + encodeURIComponent(to);
   if (ftype) url += '&type=' + encodeURIComponent(ftype);
@@ -316,12 +359,14 @@ async function runSearch() {
     showMsg('#data-msg', '共 ' + j.rows.length + ' 条', 'ok');
     j.rows.forEach(rw => {
       const tr = document.createElement('tr');
+      if (rw.related_project) tr.className = 'rel';
       const tags = (rw.tags || []).map(t => '<span class="tag">' + esc(t) + '</span>').join('');
       const created = (rw.created_at||'').replace('T',' ').slice(0,19);
       const updated = (rw.updated_at||'').replace('T',' ').slice(0,19);
       const lastAcc = (rw.last_accessed_at||'').replace('T',' ').slice(0,19);
       const histCell = (rw.history && rw.history.length) ? '<a class="hlink" onclick="showHistory(\'' + rw.id + '\')">' + rw.history.length + ' 版</a>' : '-';
-      tr.innerHTML = '<td class="content">' + esc(rw.content) + '</td>' +
+      const relTag = rw.related_project ? '<span class="reltag" title="来自关联项目（强度 ' + (rw.relation_strength!=null?rw.relation_strength:'?') + '）' + (rw.relation_note?('：'+esc(rw.relation_note)):'') + '">↳ ' + esc(rw.related_project) + ' (' + strengthLabel(rw.relation_strength) + ')</span> ' : '';
+      tr.innerHTML = '<td class="content">' + relTag + esc(rw.content) + '</td>' +
         '<td>' + esc(rw.project || '-') + '</td><td>' + esc(rw.session || '-') + '</td>' +
         '<td>' + tags + '</td>' +
         '<td>' + esc(rw.type || '-') + '</td>' +
@@ -331,6 +376,7 @@ async function runSearch() {
         '<td class="muted">' + esc(updated) + '</td>' +
         '<td class="muted">' + (lastAcc ? esc(lastAcc) : '<span title="尚未被访问/强化">—</span>') + '</td>' +
         '<td>' + histCell + '</td>' +
+        '<td><a class="hlink" onclick="showSource(\'' + rw.id + '\')">溯源</a></td>' +
         '<td class="muted">' + (rw.score!=null?rw.score.toFixed(2):'-') + '</td>' +
         '<td class="muted" title="access_count=' + (rw.access_count||0) + '">' + (rw.salience!=null?rw.salience.toFixed(2):'-') + '</td>' +
         '<td class="actions"><button class="ghost" onclick="openEdit(\'' + rw.id + '\')">编辑</button> ' +
@@ -538,6 +584,58 @@ async function showHistory(id) {
   } catch (e) { alert('读取历史失败'); }
 }
 function closeHist() { $('#hist-modal').classList.remove('show'); }
+
+function strengthLabel(s) { s = Number(s) || 0; return s >= 0.8 ? '强' : (s >= 0.5 ? '中' : '弱'); }
+
+async function loadLinks() {
+  try {
+    const r = await fetch('/api/project-links'); const j = await r.json();
+    const tb = $('#lk-tbl tbody'); tb.innerHTML = '';
+    (j.links || []).forEach(l => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + esc(l.from_project) + '</td><td>' + esc(l.to_project) + '</td><td>' + strengthLabel(l.strength) + ' (' + l.strength + ')</td><td class="muted">' + esc(l.note || '') + '</td>' +
+        '<td class="actions"><button class="danger" onclick="delLink(\'' + esc(l.from_project) + '\',\'' + esc(l.to_project) + '\')">删除</button></td>';
+      tb.appendChild(tr);
+    });
+  } catch (e) {}
+}
+async function addLink() {
+  const body = { from_project: $('#lk-from').value.trim(), to_project: $('#lk-to').value.trim(), strength: parseFloat($('#lk-strength').value) || 0.6, note: $('#lk-note').value.trim() };
+  if (!body.from_project || !body.to_project) { showMsg('#lk-msg', '源/目标项目必填', 'err'); return; }
+  const r = await fetch('/api/project-links', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json();
+  if (j.ok) { showMsg('#lk-msg', '已保存关联（强度 ' + strengthLabel(body.strength) + '）', 'ok'); loadLinks(); }
+  else showMsg('#lk-msg', '失败: ' + (j.message || ''), 'err');
+}
+async function delLink(f, t) {
+  if (!confirm('删除该关联？')) return;
+  await fetch('/api/project-links?from=' + encodeURIComponent(f) + '&to=' + encodeURIComponent(t), { method: 'DELETE' });
+  loadLinks();
+}
+async function showSource(id) {
+  try {
+    const r = await fetch('/api/memories/' + encodeURIComponent(id)); const j = await r.json();
+    const s = j.source || {};
+    const rows = [];
+    rows.push(['来源类型', esc(s.type || 'human')]);
+    if (s.ref) rows.push(['引用 ref', esc(s.ref)]);
+    if (s.conversation_id) rows.push(['对话 ID', '<code>' + esc(s.conversation_id) + '</code>']);
+    if (s.message_id) rows.push(['消息 ID', '<code>' + esc(s.message_id) + '</code>']);
+    if (s.url) rows.push(['来源 URL', '<a href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.url) + '</a>']);
+    if (s.file) rows.push(['文件', esc(s.file) + (s.line ? (':' + s.line) : '')]);
+    if (s.captured_at) rows.push(['捕获时间', esc((s.captured_at || '').replace('T', ' ').slice(0, 19))]);
+    if (s.trigger) rows.push(['触发方式', esc(s.trigger)]);
+    let html = '<table style="margin-top:8px"><tbody>';
+    html += rows.map(x => '<tr><td class="muted" style="padding:4px 16px 4px 0;vertical-align:top">' + x[0] + '</td><td style="padding:4px 0;vertical-align:top">' + x[1] + '</td></tr>').join('');
+    html += '</tbody></table>';
+    const hist = j.history || [];
+    html += '<h3 style="margin-top:16px">内容演变 (' + hist.length + ' 版)</h3>';
+    html += hist.length ? ('<div class="histbox">' + hist.slice().reverse().map(h => '<div class="histitem"><span class="muted">' + esc((h.at || '').replace('T', ' ').slice(0, 19)) + '</span> ' + esc(h.content) + '</div>').join('') + '</div>') : '<p class="muted">暂无历史版本</p>';
+    $('#src-body').innerHTML = html;
+    $('#src-modal').classList.add('show');
+  } catch (e) { alert('读取溯源失败'); }
+}
+function closeSrc() { $('#src-modal').classList.remove('show'); }
 
 async function loadDocs() {
   const box = $('#docs');

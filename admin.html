@@ -58,6 +58,11 @@
   .modal.show { display: flex; }
   .modal .card { width: 560px; max-width: 92vw; }
   .modal .actions-row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+  button.warnbtn { background: #9e6a03; } button.warnbtn:hover { background: #bb8009; }
+  .corrcount { color: #e3b341; font-weight: 600; }
+  .livecard { flex: 1; min-width: 120px; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 12px 14px; }
+  .livecard .lv { font-size: 22px; font-weight: 700; color: #e6edf3; }
+  .livecard .ll { font-size: 12px; color: #8b949e; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -75,6 +80,7 @@
   <div class="tab" data-pane="help">使用帮助</div>
   <div class="tab" data-pane="graph">知识图谱</div>
   <div class="tab" data-pane="links">项目关系</div>
+  <div class="tab" data-pane="quality">质量监控</div>
 </div>
 
 <!-- 数据管理 -->
@@ -96,7 +102,7 @@
   </div>
   <div id="data-msg"></div>
   <table id="tbl">
-    <thead><tr><th>内容</th><th>项目</th><th>会话</th><th>标签</th><th>类型</th><th>分类</th><th>记忆类型</th><th>创建</th><th>更新</th><th>最近访问</th><th>历史</th><th>溯源</th><th>分</th><th>显著性</th><th></th></tr></thead>
+    <thead><tr><th>内容</th><th>项目</th><th>会话</th><th>标签</th><th>类型</th><th>分类</th><th>记忆类型</th><th>创建</th><th>更新</th><th>最近访问</th><th>历史</th><th>溯源</th><th>分</th><th>显著性</th><th>纠正</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </div>
@@ -263,6 +269,24 @@
   </div>
 </div>
 
+<!-- 质量监控 (v1.8.0) -->
+<div class="pane" id="pane-quality">
+  <div class="card">
+    <h3 style="margin-top:0">质量监控面板 (v1.8.0)</h3>
+    <p class="muted" style="margin:4px 0">实时采集各操作计数 / 错误数 / 平均延迟，按操作与按日汇总（SQLite metrics 表持久化）。进程重启后「实时」清零，「按日」保留历史。</p>
+    <div class="row" id="q-live" style="gap:12px"></div>
+    <div style="margin-top:10px"><button class="ghost" onclick="loadMetrics()">刷新</button><span id="q-msg" class="msg" style="margin-left:10px"></span></div>
+  </div>
+  <div class="card" style="margin-top:18px">
+    <h3 style="margin-top:0">按操作统计</h3>
+    <table id="q-op"><thead><tr><th>操作</th><th>次数</th><th>错误</th><th>平均延迟(ms)</th><th>错误率</th></tr></thead><tbody></tbody></table>
+  </div>
+  <div class="card" style="margin-top:18px">
+    <h3 style="margin-top:0">按日统计（近 30 天）</h3>
+    <table id="q-day"><thead><tr><th>日期</th><th>总次数</th><th>错误</th><th>平均延迟(ms)</th></tr></thead><tbody></tbody></table>
+  </div>
+</div>
+
 <!-- 编辑弹窗 -->
 <div class="modal" id="edit-modal">
   <div class="card">
@@ -300,6 +324,25 @@
   </div>
 </div>
 
+<!-- 用户纠正学习 (B1) 弹窗 -->
+<div class="modal" id="correct-modal">
+  <div class="card">
+    <h3 style="margin-top:0">用户纠正学习 (B1)</h3>
+    <p class="muted" style="margin:4px 0">把纠正反馈应用到该记忆：更新内容、标记 corrected_at、把 confidence 提升至 0.9、correction_count+1，旧版本自动进 history。</p>
+    <div class="row">
+      <div><label>目标记忆 ID</label><input id="co-id" readonly style="opacity:.8" /></div>
+      <div><label>用户</label><input id="co-user" placeholder="human" value="human" /></div>
+    </div>
+    <div><label>项目（留空=不限项目）</label><input id="co-project" placeholder="如 payment" /></div>
+    <label>纠正反馈内容</label><textarea id="co-feedback" placeholder="例如：不是上海，是深圳；应该记住我们用的是 PostgreSQL 不是 MySQL"></textarea>
+    <div id="co-msg" class="msg"></div>
+    <div class="actions-row">
+      <button class="ghost" onclick="closeCorrect()">取消</button>
+      <button class="warnbtn" onclick="submitCorrect()">应用纠正</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const $ = s => document.querySelector(s);
 let editingId = null;
@@ -313,6 +356,7 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   if (t.dataset.pane === 'config') loadConfig();
   if (t.dataset.pane === 'help') loadDocs();
   if (t.dataset.pane === 'links') loadLinks();
+  if (t.dataset.pane === 'quality') loadMetrics();
 });
 
 function setStatus(h) {
@@ -379,7 +423,9 @@ async function runSearch() {
         '<td><a class="hlink" onclick="showSource(\'' + rw.id + '\')">溯源</a></td>' +
         '<td class="muted">' + (rw.score!=null?rw.score.toFixed(2):'-') + '</td>' +
         '<td class="muted" title="access_count=' + (rw.access_count||0) + '">' + (rw.salience!=null?rw.salience.toFixed(2):'-') + '</td>' +
+        '<td class="muted" title="被用户纠正的次数">' + (rw.correction_count ? ('<span class="corrcount">'+rw.correction_count+'</span>') : '0') + '</td>' +
         '<td class="actions"><button class="ghost" onclick="openEdit(\'' + rw.id + '\')">编辑</button> ' +
+        '<button class="warnbtn" onclick="openCorrect(\'' + rw.id + '\')">纠正</button> ' +
         '<button class="danger" onclick="del(\'' + rw.id + '\')">删除</button></td>';
       tb.appendChild(tr);
     });
@@ -725,6 +771,72 @@ function gDraw(lm){
   $('#g-legend').innerHTML='类型：'+used.map(t=>'<span style="color:'+(color[t]||'#8b949e')+'">●</span> '+t).join('　');
 }
 async function gClick(id){ $('#g-seed').value=id; await gExpand(); }
+
+// ---- 质量监控面板 (v1.8.0) ----
+async function loadMetrics() {
+  try {
+    const r = await fetch('/api/metrics'); const j = await r.json();
+    const L = j.live || {};
+    const er = (L.error_rate != null) ? (L.error_rate * 100).toFixed(2) + '%' : '0%';
+    $('#q-live').innerHTML =
+      liveCard('总操作数', L.total || 0) +
+      liveCard('错误数', L.errors || 0) +
+      liveCard('平均延迟', (L.avg_ms != null ? L.avg_ms : 0) + ' ms') +
+      liveCard('错误率', er);
+    const ot = $('#q-op tbody'); ot.innerHTML = '';
+    (j.by_op || []).forEach(o => {
+      const tr = document.createElement('tr');
+      const rate = o.count ? ((o.errors / o.count) * 100).toFixed(2) + '%' : '0%';
+      tr.innerHTML = '<td><code>' + esc(o.op) + '</code></td><td>' + o.count + '</td><td' + (o.errors ? ' style="color:#f85149"' : '') + '>' + o.errors + '</td><td>' + (o.avg_ms != null ? o.avg_ms : 0) + '</td><td>' + rate + '</td>';
+      ot.appendChild(tr);
+    });
+    if (!(j.by_op || []).length) ot.innerHTML = '<tr><td colspan="5" class="muted">暂无操作记录</td></tr>';
+    const dt = $('#q-day tbody'); dt.innerHTML = '';
+    (j.by_day || []).forEach(d => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + esc(d.day) + '</td><td>' + d.total + '</td><td' + (d.errors ? ' style="color:#f85149"' : '') + '>' + d.errors + '</td><td>' + (d.avg_ms != null ? d.avg_ms : 0) + '</td>';
+      dt.appendChild(tr);
+    });
+    if (!(j.by_day || []).length) dt.innerHTML = '<tr><td colspan="4" class="muted">暂无按日记录</td></tr>';
+    showMsg('#q-msg', '已更新 ' + new Date().toLocaleTimeString(), 'ok');
+  } catch (e) { showMsg('#q-msg', '加载失败: ' + e.message, 'err'); }
+}
+function liveCard(label, val) {
+  return '<div class="livecard"><div class="lv">' + val + '</div><div class="ll">' + esc(label) + '</div></div>';
+}
+
+// ---- 用户纠正学习 (B1) ----
+function openCorrect(id) {
+  $('#co-id').value = id;
+  $('#co-feedback').value = '';
+  $('#co-msg').textContent = '';
+  $('#correct-modal').classList.add('show');
+  $('#co-feedback').focus();
+}
+function closeCorrect() { $('#correct-modal').classList.remove('show'); }
+async function submitCorrect() {
+  const id = $('#co-id').value;
+  const feedback = $('#co-feedback').value.trim();
+  if (!feedback) { showMsg('#co-msg', '请填写纠正反馈内容', 'err'); return; }
+  const body = { target_id: id, feedback, user: $('#co-user').value.trim() || 'human', project: $('#co-project').value.trim() || null };
+  showMsg('#co-msg', '应用中…', 'info');
+  try {
+    const r = await fetch('/api/correct', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await r.json();
+    if (j.corrected) {
+      showMsg('#co-msg', '✅ 已纠正（correction_count=' + j.correction_count + '，confidence=' + j.confidence + '）', 'ok');
+      setTimeout(() => { closeCorrect(); runSearch(); }, 900);
+    } else {
+      showMsg('#co-msg', '⚠️ 未找到可纠正的记忆：' + (j.reason || ''), 'err');
+    }
+  } catch (e) { showMsg('#co-msg', '纠正失败: ' + e.message, 'err'); }
+}
+
+// 质量面板处于激活态时每 5 秒自动刷新
+setInterval(() => {
+  const qp = document.getElementById('pane-quality');
+  if (qp && qp.classList.contains('active')) loadMetrics();
+}, 5000);
 
 // 初始
 runSearch();

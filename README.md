@@ -129,6 +129,12 @@
 - 服务启动时 `try { Database = require('better-sqlite3') } catch { Database = null }`：若 `better-sqlite3` 不可用则 `Database=null`，仍可用 ES；二者皆不可用时存储不可用（健康检查会报错，详见自测）。
 - 降级为 SQLite 时，语义（kNN）检索退化为关键词/近似匹配，因为 SQLite 无原生向量索引；但这保证了**无 Qdrant 环境也能先把记忆存下来**。
 
+### 审计历史层（v1.9.1）
+- **为什么**：Qdrant 是 upsert 全量覆盖（无部分更新端点），普通更新直接盖掉旧 payload，**不留变更痕迹**。为补齐「可审计、可回放」能力（对齐 Mem0 的 SQLite 历史层），新增**独立变更账本** `memory_changelog` 表（复用同一个 `memories.db`），**不被 Qdrant upsert 覆盖**。
+- **记什么**：每次写操作成功后各记一条 `{memory_id, op, ts, user, project, before, after, source_trigger}`——`op ∈ {ADD, UPDATE, CORRECT, DELETE, CLEANUP}`；`before/after` 只存关键字段快照（控制体积）。`CLEANUP`（生命周期清理）记 `{deleted_count, deleted_ids}`。
+- **怎么查**：`GET /api/memories/:id/history`（单条记忆时间线）、`GET /api/changelog?limit=`（全局时间线，倒序）。记忆删除后历史仍保留（账本独立）。
+- **版本乐观锁（防并发丢失）**：每条记忆 payload 带 `version`（doAdd=1，每次更新 +1）。Qdrant 路径写前**重读最新 prev+version 再递增写回**（乐观重试，默认 3 次），避免两个并发写互相覆盖；SQLite 路径串行递增。
+
 ---
 
 ## 五、降级与容错处理（核心设计）

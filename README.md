@@ -1,6 +1,6 @@
 # ai-memory —— 本地优先的 AI 长期记忆服务
 
-> 一个面向 AI 助手的"长期记忆"后端：把对话、文档片段、知识要点结构化存进 Elasticsearch（或本地 SQLite 降级库），用**向量检索 + 关键词召回 + 知识图谱**把"过去说过什么、谁和谁什么关系"随时找回来。支持本地模型与云端模型后端解耦，提供一键自测，并且在每个外部依赖（ES、嵌入模型、LLM、图谱模型）异常时都有明确的降级路径，保证**主写入流程永不被次要能力拖垮**。
+> 一个面向 AI 助手的"长期记忆"后端：把对话、文档片段、知识要点结构化存进 Qdrant 向量库（或本地 SQLite 降级库），用**向量检索 + 关键词召回 + 知识图谱**把"过去说过什么、谁和谁什么关系"随时找回来。支持本地模型与云端模型后端解耦，提供一键自测，并且在每个外部依赖（Qdrant、嵌入模型、LLM、图谱模型）异常时都有明确的降级路径，保证**主写入流程永不被次要能力拖垮**。
 
 ---
 
@@ -8,7 +8,7 @@
 
 `ai-memory` 是一套**本地优先（Local-First）**的 AI 记忆系统。它让 AI 助手具备跨会话、跨项目的长期记忆能力，而不是每次对话都从零开始。
 
-- **存储**：默认 Elasticsearch（`ai_memories` 索引，每条记忆是一个 1024 维 `dense_vector` 文档）；**当 `es_url` 留空时自动降级为本地 SQLite 文件库 `memories.db`**（见第四节）。
+- **存储**：默认 Qdrant（`memories` 集合，每条记忆是一个 1024 维向量 + 结构化 payload 文档）；**当 `qdrant_url` 留空（或 `embedding_url` 未配）时自动降级为本地 SQLite 文件库 `memories.db`**（见第四节）。
 - **向量化**：本地 `llama-embed`（llama.cpp，OpenAI 兼容 `/v1/embeddings` 接口，跑 `qwen3-embedding:0.6B`）。
 - **服务**：单个 Node 进程同时提供 MCP SSE 接口、`/admin` 管理界面、REST API。
 - **部署**：systemd 服务 `ai-memory.service`，监听 `:8765`。
@@ -103,9 +103,9 @@
               ┌───────────────────────────────┼────────────────────────────┐
               ▼                               ▼                            ▼
       ┌──────────────┐              ┌──────────────┐              ┌──────────────┐
-      │ Elasticsearch│  (降级)       │  llama-embed  │              │ 可选云端模型  │
-      │  :9200       │ ───────────▶ │  (本地嵌入)   │              │ (DeepSeek等) │
-      │ ai_memories  │   SQLite     │              │              │              │
+      │   Qdrant    │  (降级)       │  llama-embed  │              │ 可选云端模型  │
+      │  :6333      │ ───────────▶ │  (本地嵌入)   │              │ (DeepSeek等) │
+      │  memories   │   SQLite     │              │              │              │
       └──────────────┘  memories.db └──────────────┘              └──────────────┘
 ```
 
@@ -119,15 +119,15 @@
 
 ---
 
-## 四、存储后端：Elasticsearch 与本地 SQLite 降级
+## 四、存储后端：Qdrant 与本地 SQLite 降级
 
 | 场景 | 存储 | 说明 |
 |------|------|------|
-| `es_url` 已配置 | Elasticsearch（`ai_memories`） | 主用；支持 dense_vector kNN、BM25、混合检索 |
-| `es_url` 留空 | 本地 SQLite（`better-sqlite3` → `memories.db`） | **自动降级**，无需额外部署即可运行 |
+| `qdrant_url` 已配置（且 `embedding_url` 已配） | Qdrant（`memories` 集合） | 主用；向量 kNN + payload 结构化过滤 + 应用层 RRF 混合检索 |
+| `qdrant_url` 留空 / 无嵌入 | 本地 SQLite（`better-sqlite3` → `memories.db`） | **自动降级**，无需额外部署即可运行 |
 
 - 服务启动时 `try { Database = require('better-sqlite3') } catch { Database = null }`：若 `better-sqlite3` 不可用则 `Database=null`，仍可用 ES；二者皆不可用时存储不可用（健康检查会报错，详见自测）。
-- 降级为 SQLite 时，语义（kNN）检索退化为关键词/近似匹配，因为 SQLite 无原生向量索引；但这保证了**无 ES 环境也能先把记忆存下来**。
+- 降级为 SQLite 时，语义（kNN）检索退化为关键词/近似匹配，因为 SQLite 无原生向量索引；但这保证了**无 Qdrant 环境也能先把记忆存下来**。
 
 ---
 
@@ -137,7 +137,7 @@
 
 | # | 降级点 | 触发条件 | 降级行为 | 是否阻塞主流程 |
 |---|--------|----------|----------|----------------|
-| 1 | **数据库** | `es_url` 空 / ES 不可用 | 自动改用本地 SQLite `memories.db`；二者皆无则存储报错（健康检查可见） | 否（有降级库）/ 是（全无） |
+| 1 | **数据库** | `qdrant_url` 空 / 无嵌入 / Qdrant 不可用 | 自动改用本地 SQLite `memories.db`；二者皆无则存储报错（健康检查可见） | 否（有降级库）/ 是（全无） |
 | 2 | **配置加载** | `config.json` 缺失/损坏 | `try/catch` 静默忽略，回落到内置默认值 + 环境变量 fallback | 否 |
 | 3 | **嵌入失败** | 嵌入端点不可达 / 超时 / 返回 0 维 | `catch` 后 `doc.embedding` 不赋值，记忆**仍写入**，只是该条不参与语义检索（退化为仅关键词） | 否 |
 | 4 | **去重查找失败** | `dedupFind` 异常 | 返回 `null` → 视作无相似记忆 → 直接新增，不合并 | 否 |
@@ -164,12 +164,12 @@
 
 | mode | 实现 | 依赖 |
 |------|------|------|
-| `keyword` | ES `match` (BM25) | ES |
-| `semantic` | ES `knn` (dense_vector) | ES + 嵌入端点 |
-| `hybrid` | **应用层 RRF** 融合 keyword + semantic 两份排名 | ES + 嵌入端点 |
+| `keyword` | 语义候选 + content/tags 子串命中（Qdrant 无原生 BM25） | Qdrant + 嵌入端点 |
+| `semantic` | Qdrant `query` (dense_vector, Cosine) | Qdrant + 嵌入端点 |
+| `hybrid` | **应用层 RRF** 融合 keyword + semantic 两份排名 | Qdrant + 嵌入端点 |
 
-**为什么是应用层 RRF**：Elasticsearch **basic 许可证不支持服务端 `rank: { rrf }`**，所以系统**不依赖服务端 RRF**，而是在 Node 侧用 Reciprocal Rank Fusion（`score = 1/(K+i+1)`，K=60）对两份命中列表融合排序。好处：
-- 不挑 ES 许可证版本，basic 也能用混合检索；
+**为什么是应用层 RRF**：Qdrant **无原生 BM25、服务端也不支持 RRF 融合**，所以系统**不依赖服务端 RRF**，而是在 Node 侧用 Reciprocal Rank Fusion（`score = 1/(K+i+1)`，K=60）对两份命中列表融合排序。好处：
+- 不挑存储后端，Qdrant/SQLite 都能用混合检索；
 - 即使 semantic 侧因嵌入失败为空，keyword 侧结果仍正常返回（RRF 自然降级为单路）。
 
 所有模式最终都过 `applyRecency` 做时序衰减加权（可在配置关闭）。
@@ -222,9 +222,8 @@ ssh root@192.168.110.128 'cd /opt/ai-memory && \
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
-| `es_url` | 空 | Elasticsearch 地址；**留空即降级为本地 SQLite** |
-| `es_user` / `es_pwd` | 空 | ES 认证（明文） |
-| `es_index` | `ai_memories` | 索引名 |
+| `qdrant_url` | 空 | Qdrant 地址（如 `http://192.168.110.248:6333`）；**留空即降级为本地 SQLite** |
+| `qdrant_collection` | `memories` | Qdrant 集合名 |
 | `embedding_url` | 空 | 嵌入端点（本地 llama-embed / 云端）；留空则记忆无向量（仅关键词检索） |
 | `embedding_model` | 空 | 嵌入模型名 |
 | `embedding_api_key` | 空 | 云端嵌入的 Bearer Token；本地留空 |
@@ -252,8 +251,8 @@ ssh root@192.168.110.128 'cd /opt/ai-memory && \
 
 打开 `http://<服务器IP>:8765/admin`：
 
-### 1. 数据库（Elasticsearch）
-- **「测试 ES 连接」**：`ping()` 连通 → `indices.exists` 检查 `ai_memories` → `count` 报文档数。索引不存在时列出可用索引名便于核对。连不上返回错误详情（如 401）。
+### 1. 数据库（Qdrant）
+- **「测试 Qdrant 连接」**：`GET /collections/{collection}` 连通 → `count` 报点数。集合不存在时返回错误详情便于核对。连不上返回错误详情。
 
 ### 2. 嵌入 / 向量模型
 - **「测试嵌入模型」**：发探针文本，验证端点连通并回报**向量维度**（如 `✅ 连通，向量维度 1024`）。
@@ -287,8 +286,10 @@ ssh root@192.168.110.128 'cd /opt/ai-memory && \
 
 ## 十二、版本
 
+- **v1.9.0**：存储后端由 Elasticsearch 切换为 **Qdrant**（向量 + 结构化 payload，过滤/语义检索一体）；ES 已停止，仅在 `qdrant_url` 未配置或无嵌入时降级本地 SQLite。新增 `lib/qdrant.js` 适配器；`backend.qdrantFilter`/`memory.expiredFilter` 规避 Qdrant 1.18.3 的 `should`/`min_should` 非标准结构（改用 `must_not` + 双 `must` 过滤）。修复溯源缺口：每次捕获（`reconcileFact`/`captureText`）统一盖 `source.trigger='capture'` + `captured_at`，`normalizeSource` 空输入不再返回 null。端到端验证见 `verify_qdrant_regression.py`。
+- **v1.8.0**：按功能拆分 `lib/` 模块（config/util/embed/backend/intelligence/projects/graph/facts/memory/capture/correction/quality/diagnostics/rest/mcp），server.js 由单体改为薄入口；新增 B1 用户纠正学习（`correct_memory` 工具 + `POST /api/correct`）与质量监控（`quality.js` + `/api/metrics` + admin 质量监控 Tab）。
 - **v1.7.0**：项目隔离 + 跨项目借鉴 + 溯源。① 项目间强弱关联（`project_links` 表 + `manage_project_link` 工具 + `/api/project-links` 接口），检索/列出时按 `relationDecay(strength)=0.2+0.6*s` 衰减借用关联项目记忆；`include_related` 可逐请求关闭。② 记忆溯源：`normalizeSource` 统一打 `captured_at`/`trigger`，支持 `conversation_id/message_id/url/file/line`；`/admin` 新增「溯源」列与弹窗。修复 `doList` 误用 `hitsToRows([h])` 导致 500、跨项目 `include_related` 覆盖在 ES 路径不生效。
-  - **v1.7.0 追加修复（功能互查）**：③ `doList` 跨项目记忆此前只对主项目记忆赋基准分、关联记忆未乘 `relationDecay` 且因走 `bool.filter` 查询 `_score` 恒为 0 导致衰减成空操作——现已统一主=1/关联=decay 基准分，列表视图关联记忆稳定排在后面。④ 生命周期清理（`cleanupExpired`/`purgeMemories`）原只按 `updated_at` 删，过期 session/TTL 记忆被隐藏却永不删除（索引膨胀、且被合并更新的过期记忆逃过清理）——改为同时按 `expires_at<now` 删除。⑤ 跨项目借鉴的 `bumpAccess` 耦合：原 `doSearch` 对所有返回记忆（含借来的）做访问强化，导致在 A 项目检索会刷新 B 项目记忆的 `last_accessed_at`、使其常驻新鲜——现只强化主项目记忆（`!r.related_project`）。端到端验证见 `verify_fixes.py`
+  - **v1.7.0 追加修复（功能互查）**：③ `doList` 跨项目记忆此前只对主项目记忆赋基准分、关联记忆未乘 `relationDecay` 且因走 `bool.filter` 查询 `_score` 恒为 0 导致衰减成空操作——现已统一主=1/关联=decay 基准分，列表视图关联记忆稳定排在后面。④ 生命周期清理（`cleanupExpired`/`purgeMemories`）原只按 `updated_at` 删，过期 session/TTL 记忆被隐藏却永不删除（索引膨胀、且被合并更新的过期记忆逃过清理）——改为同时按 `expires_at<now` 删除。⑤ 跨项目借鉴的 `bumpAccess` 耦合：原 `doSearch` 对所有返回记忆（含借来的）做访问强化，导致在 A 项目检索会刷新 B 项目记忆的 `last_accessed_at`、使其常驻新鲜——现只强化主项目记忆（`!r.related_project`）。端到端验证见 `verify_qdrant_regression.py`
 - **v1.6.0**：记忆分类 `memory_type`（user/agent/session，与 `scope`/`category` 正交）+ `salience` 强化评分（`0.5*重要性 + 0.5*访问强化`，搜索命中回写 `access_count`/`last_accessed_at`）；时间衰减基准改为 `last_accessed_at`（越回想越巩固）；修复 ES `bool.should` 过滤失效与 `GET /api/memories` 漏解析 `memory_type`
 - **v1.5.3**：把 `fact_entities` 兜底扩展到 `doUpdate` 全路径（supplement / contradict 覆盖 / dedup-merge 分支），云端模型在更新与新建场景均不再丢实体（与 doAdd 一致）
 - **v1.5.2**：修复云端模型（deepseek v4-flash/pro）`entities` 恒空——强化 `extractFacts` 提示词（entities 标 REQUIRED + 中文 few-shot）+ `reconcileFact` 透传 `fact_entities` + `doAdd` 加事实阶段实体兜底

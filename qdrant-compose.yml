@@ -1,0 +1,28 @@
+# Qdrant on 248（替换 ES 的部署清单）
+# 用法：
+#   1) 把本文件放到 248 的某目录，例如 /opt/qdrant/docker-compose.yml
+#   2) mkdir -p /opt/qdrant/storage        # 持久层目录（磁盘，容器删了数据还在）
+#   3) docker compose up -d
+#   4) 用下面的 curl 建 memories collection（1024 维 / Cosine / 向量放磁盘 / int8 量化）
+#
+# 内存策略（针对 248 吃紧）：
+#   - mem_limit 512m : 容器最多吃 512MB，绝不会把 248 吃垮
+#   - vectors.on_disk: true + payload on_disk : 向量/载荷不放内存，只留 HNSW 图索引在内存
+#   - quantization scalar int8 : 向量再压到 1/4（比 ES 的 float32 省得多）
+#   - hnsw m=8 : 图连接度调低，少占内存（个人记忆量级召回几乎无损）
+# 个人记忆量级（几千~几万条）实际 RSS 通常 < 200MB。
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # REST
+      - "6334:6334"   # gRPC
+    mem_limit: 512m
+    mem_reservation: 256m
+    volumes:
+      # === 持久层映射：宿盘目录 -> 容器内 /qdrant/storage ===
+      # 改左边路径即可换磁盘位置；右边 /qdrant/storage 是 Qdrant 固定存储根，不要改
+      - /opt/qdrant/storage:/qdrant/storage

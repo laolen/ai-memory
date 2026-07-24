@@ -9,7 +9,8 @@
 `ai-memory` 是一套**本地优先（Local-First）**的 AI 记忆系统。它让 AI 助手具备跨会话、跨项目的长期记忆能力，而不是每次对话都从零开始。
 
 - **存储**：默认 Qdrant（`memories` 集合，每条记忆是一个 1024 维向量 + 结构化 payload 文档）；**当 `qdrant_url` 留空（或 `embedding_url` 未配）时自动降级为本地 SQLite 文件库 `memories.db`**（见第四节）。
-- **向量化**：本地 `llama-embed`（llama.cpp，OpenAI 兼容 `/v1/embeddings` 接口，跑 `qwen3-embedding:0.6B`）。
+- **向量化**：`qwen3-embedding:0.6B`（Ollama `http://192.168.110.248:11500/v1/embeddings`，1024 维）。
+- **LLM 提取**：可选 deepseek-v4-pro（云端）/ minicpm5-1b（本地 128），用于实体/关系/类别抽取。
 - **服务**：单个 Node 进程同时提供 MCP SSE 接口、`/admin` 管理界面、REST API。
 - **部署**：systemd 服务 `ai-memory.service`，监听 `:8765`。
 
@@ -292,6 +293,26 @@ ssh root@192.168.110.128 'cd /opt/ai-memory && \
 
 ## 十二、版本
 
+- **v1.13.0**（当前版本）：补齐与 Mem0 的**剩余全部差距（10 项，零新依赖）**：
+  - **① MMR 多样性重排**：`mmr_enabled`+`mmr_lambda`，`applyMMR` 函数（Jaccard 近似）。末次排序前插入，λ 控制语义 vs 多样性平衡。
+  - **② 可插拔 reranker 管线**：`reranker_url` 配置外部 cross-encoder，search/list 走 HTTP 回调精排（失败静默退化）。
+  - **③ 记忆固定（pin）**：`pinned` 字段免除过期/衰减/清理。`POST /api/memories/pin`、`POST /api/memories/unpin`，MCP `pin_memory`/`unpin_memory` 工具。
+  - **④ 自动压缩引擎**：`auto_compress` 开启后，`captureText` 返回前自动触发非阻塞 `consolidate`（作用于该项目）。
+  - **⑤ API 认证**：`api_keys` 数组配置 Bearer token；admin/docs/health/MCP SSE 豁免。
+  - **⑥ 导出/导入**：`GET /api/export`（JSON，Qdrant scroll + SQLite 双路径）、`POST /api/import`。MCP `export_memories`/`import_memories` 工具。
+  - **⑦ 重置**：`POST /api/reset`（需 `confirm:true` 防误操作）。
+  - **⑧ 备份**：`POST /api/backup` 写出 JSON 文件到服务端，路径由 `backup_path` 配置。
+  - **⑨ 游标分页**：search/list 响应新增 `next_cursor` 字段（id 定位），便于服务端分页遍历。
+  - **⑩ 统计面板**：`GET /api/stats` 返回记忆总量/固定数/过期数/按类别分布（Qdrant count API + SQLite fallback）。
+  - **MCP 工具新增**：`pin_memory`、`unpin_memory`、`export_memories`、`import_memories`、`reset_memories`、`backup_memories`、`get_memory_stats`（共 7 个）。
+  - **配置字段新增**：`mmr_enabled`、`mmr_lambda`、`reranker_url`、`reranker_model`、`reranker_api_key`、`api_keys`、`auto_compress`、`backup_path`。
+  - **端到端验证**：`verify_v113.js`（12/12）- `test_full.js`（33/33）- `test_deep.js`（20/20）— **合计 65/65 通过**。
+- **v1.12.0**：补齐与 Mem0 的 **4 项差距（零新依赖）**：
+  - **① 项目级持久配置**：`project_config` 表 + `projectConfigGet/Set/Delete/List`，支持 `custom_categories`（自定义类别体系）、`extract_instructions`（持久抽取指令）、`criteria`（检索加权准则）、`webhook_urls`（项目级推送端点）。`captureText` 自动注入。REST `GET/PUT/DELETE /api/projects/:project/config`。
+  - **② 多主体归属**：`actor_id`/`agent_id`/`run_id` 三维度贯穿 add/capture/search/list/Qdrant 过滤全路径。MCP 全工具 schema 添加。
+  - **③ criteria 加权检索**：`applyCriteriaQdrant`/`applyCriteriaSqlite`（进程内嵌入缓存 LRU 100）。`search` 未传 criteria 时自动回退项目级默认。REST `GET /api/memories?criteria=`。
+  - **④ Webhooks 事件推送**：`lib/webhook.js`（NEW，零依赖）。Fire-and-forget POST + 失败重试 1 次。事件：`memory.added/updated/deleted/promoted/consolidated`。目标 = 全局 `webhook_urls` + 项目级 `webhook_urls` 合并去重。环形缓冲 50 条投递记录。`GET /api/webhooks/recent` + `get_webhook_recent` MCP 工具。
+  - **端到端验证**：`verify_v112.js`（14/14 通过）。
 - **v1.11.0**：一次性补齐与 Mem0 (2026) 的 **8 项能力差距**（零新增 npm 依赖，延续 SQLite 镜像层 + Qdrant 主存储的解耦模式）：
   - **① 记忆分层（working / long + org 作用域）**：新增 `working_memories` 独立缓冲表（不污染 Qdrant/FTS/图谱/审计），`tier='working'` 走独立读写与 TTL（`working_ttl_hours`，默认 24h）；`add_working_memory` / `promote_working_memory` 工具与 `POST /api/working`、`GET /api/working`、`DELETE /api/working/:id`、`POST /api/working/:id/promote`。记忆全表新增 `org` 组织作用域列。
   - **② 结构化类别 + ⑧ 版本化抽取模型**：`extract_version`（`v1`/`v2`）配置；v2 提示词额外抽取 `mem_category ∈ {fact, preference, opinion, event, procedure, skill}`（Mem0 风格），随记忆持久化。

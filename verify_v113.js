@@ -69,7 +69,7 @@ async function main() {
   // 8) Reset (use a sub-project to test, not full reset)
   const add2 = await api('POST', '/api/memories', { content: 'to be reset', user: 'u1', project: PRJ + '_rst', tags: ['t'] });
   assert('ADD for reset', add2.status === 200, add2.body);
-  await sleep(800);
+  await sleep(2500);
   // 对子项目做过滤删除而非全量 reset
   const delF = await api('DELETE', '/api/memories/filter', { filters: { key: 'project', op: 'eq', value: PRJ + '_rst' } });
   assert('RESET-like cleanup', delF.body && delF.body.deleted >= 1, delF.body);

@@ -61,9 +61,11 @@ async function main() {
     assert('AUTH rejects bad key', badAuth.status === 401, { status: badAuth.status });
   } else console.log('INFO: api_keys 未配，认证测试跳过（auth 依赖服务端配置）');
 
-  // 7) MMR: 搜索确认不报错（MMR 依赖 mmr_enabled 配置，默认关）
-  const s2 = await api('GET', '/api/memories?project=' + encodeURIComponent(PRJ) + '&q=test&limit=5');
-  assert('MMR search no error', s2.status === 200 || s2.status === 400, { status: s2.status });
+  // 7) MMR: 搜索确认不报错（keyword 模式，嵌入服务做语义候选；用匹配内容的查询避免嵌入拒短词）
+  await sleep(500);
+  const s2 = await api('GET', '/api/memories?project=' + encodeURIComponent(PRJ) + '&q=really+important+fact+to+remember&limit=5');
+  assert('MMR search no error', s2.status === 200, { status: s2.status, n: s2.body && s2.body.rows && s2.body.rows.length });
+
 
   // 8) Reset (use a sub-project to test, not full reset)
   const add2 = await api('POST', '/api/memories', { content: 'to be reset', user: 'u1', project: PRJ + '_rst', tags: ['t'] });

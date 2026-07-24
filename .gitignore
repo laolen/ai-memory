@@ -1,6 +1,7 @@
-# 运行时生成（降级库 / 监听偏移 / 备份）
+# 运行时生成（降级库 / 监听偏移 / 备份 / 配置）
 memories.db
 .capture.offsets.json
+config.json
 *.bak
 *.log
 node_modules/

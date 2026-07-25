@@ -1,0 +1,15 @@
+{
+  "name": "ai-memory",
+  "version": "1.13.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "verify": "node lib/verify_v113.js"
+  },
+  "dependencies": {
+    "@elastic/elasticsearch": "^8.19.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.11.1"
+  }
+}

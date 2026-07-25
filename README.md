@@ -127,7 +127,7 @@
 | `qdrant_url` 已配置（且 `embedding_url` 已配） | Qdrant（`memories` 集合） | 主用；向量 kNN + payload 结构化过滤 + 应用层 RRF 混合检索 |
 | `qdrant_url` 留空 / 无嵌入 | 本地 SQLite（`better-sqlite3` → `memories.db`） | **自动降级**，无需额外部署即可运行 |
 
-- 服务启动时 `try { Database = require('better-sqlite3') } catch { Database = null }`：若 `better-sqlite3` 不可用则 `Database=null`，仍可用 ES；二者皆不可用时存储不可用（健康检查会报错，详见自测）。
+- 服务启动时 `try { Database = require('better-sqlite3') } catch { Database = null }`：若 `better-sqlite3` 不可用则 `Database=null`，本地 SQLite 降级库不可用，但 Qdrant 主存储仍可用；Qdrant 与 SQLite 二者皆不可用时存储不可用（健康检查会报错，详见自测）。
 - 降级为 SQLite 时，语义（kNN）检索退化为关键词/近似匹配，因为 SQLite 无原生向量索引；但这保证了**无 Qdrant 环境也能先把记忆存下来**。
 
 ### 审计历史层（v1.9.1）
@@ -189,10 +189,10 @@
 |------|------|
 | `server.js` | 后端主程序（MCP SSE + Admin + REST，含 `/api/test-backend`、四个测试助手、本地/云端鉴权、全部降级逻辑） |
 | `admin.html` | 管理界面（服务启动时读入内存，**改完必须重启服务才生效**） |
-| `config.json` | 运行配置（ES 地址、嵌入端点、各 `api_key` 等；部署脚本**不覆盖**此文件） |
+| `config.json` | 运行配置（Qdrant 地址、嵌入端点、各 `api_key` 等；部署脚本**不覆盖**此文件） |
 | `deploy.sh` | 一键部署脚本（连通性预检 → 备份 → scp → `node --check` → 重启 → 健康检查），`REMOTE` 变量可覆盖目标主机 |
 | `LICENSE.md` | MIT 许可证（中文） |
-| `memories.db` | （运行时生成）ES 不可用时的本地 SQLite 降级库 |
+| `memories.db` | （运行时生成）Qdrant 不可用时的本地 SQLite 降级库 |
 | `.capture.offsets.json` | （运行时生成）文件监听偏移量，重启续传 |
 | `server.js.bak-<时间戳>` / `admin.html.bak-<时间戳>` | 每次部署自动备份，用于回滚 |
 
@@ -306,13 +306,13 @@ ssh root@192.168.110.128 'cd /opt/ai-memory && \
   - **⑩ 统计面板**：`GET /api/stats` 返回记忆总量/固定数/过期数/按类别分布（Qdrant count API + SQLite fallback）。
   - **MCP 工具新增**：`pin_memory`、`unpin_memory`、`export_memories`、`import_memories`、`reset_memories`、`backup_memories`、`get_memory_stats`（共 7 个）。
   - **配置字段新增**：`mmr_enabled`、`mmr_lambda`、`reranker_url`、`reranker_model`、`reranker_api_key`、`api_keys`、`auto_compress`、`backup_path`。
-  - **端到端验证**：`verify_v113.js`（12/12）- `test_full.js`（33/33）- `test_deep.js`（20/20）— **合计 65/65 通过**。
+  - **端到端验证**：见 `node test/run.js`（按功能拆分套件，本地 SQLite 降级模式 `OVERALL ok=25 fail=0`；`correction`/`qdrant_regression` 在完整部署上全过）。
 - **v1.12.0**：补齐与 Mem0 的 **4 项差距（零新依赖）**：
   - **① 项目级持久配置**：`project_config` 表 + `projectConfigGet/Set/Delete/List`，支持 `custom_categories`（自定义类别体系）、`extract_instructions`（持久抽取指令）、`criteria`（检索加权准则）、`webhook_urls`（项目级推送端点）。`captureText` 自动注入。REST `GET/PUT/DELETE /api/projects/:project/config`。
   - **② 多主体归属**：`actor_id`/`agent_id`/`run_id` 三维度贯穿 add/capture/search/list/Qdrant 过滤全路径。MCP 全工具 schema 添加。
   - **③ criteria 加权检索**：`applyCriteriaQdrant`/`applyCriteriaSqlite`（进程内嵌入缓存 LRU 100）。`search` 未传 criteria 时自动回退项目级默认。REST `GET /api/memories?criteria=`。
   - **④ Webhooks 事件推送**：`lib/webhook.js`（NEW，零依赖）。Fire-and-forget POST + 失败重试 1 次。事件：`memory.added/updated/deleted/promoted/consolidated`。目标 = 全局 `webhook_urls` + 项目级 `webhook_urls` 合并去重。环形缓冲 50 条投递记录。`GET /api/webhooks/recent` + `get_webhook_recent` MCP 工具。
-  - **端到端验证**：`verify_v112.js`（14/14 通过）。
+  - **端到端验证**：见 `node test/run.js`（14/14 通过）。
 - **v1.11.0**：一次性补齐与 Mem0 (2026) 的 **8 项能力差距**（零新增 npm 依赖，延续 SQLite 镜像层 + Qdrant 主存储的解耦模式）：
   - **① 记忆分层（working / long + org 作用域）**：新增 `working_memories` 独立缓冲表（不污染 Qdrant/FTS/图谱/审计），`tier='working'` 走独立读写与 TTL（`working_ttl_hours`，默认 24h）；`add_working_memory` / `promote_working_memory` 工具与 `POST /api/working`、`GET /api/working`、`DELETE /api/working/:id`、`POST /api/working/:id/promote`。记忆全表新增 `org` 组织作用域列。
   - **② 结构化类别 + ⑧ 版本化抽取模型**：`extract_version`（`v1`/`v2`）配置；v2 提示词额外抽取 `mem_category ∈ {fact, preference, opinion, event, procedure, skill}`（Mem0 风格），随记忆持久化。
@@ -321,12 +321,12 @@ ssh root@192.168.110.128 'cd /opt/ai-memory && \
   - **⑤ 批量 / 运维操作**：`batch_add_memories`、`delete_memories_by_filter`、`reextract_memory` 工具 + `POST /api/memories/batch`、`DELETE /api/memories/filter`、`POST /api/memories/:id/reextract`。
   - **⑥ 逐调用抽取引导**：`extract_instructions` 贯穿 `capture_memory`/`add_memory` → `captureText` → `extractFacts`/`llmExtract`，可按调用定制抽取重点。
   - **⑦ 评测基准**：`eval/bench_v111.js`（类别准确率 + 嵌套过滤精度 + 去重精度 + KV 往返 + working 提升，输出综合 `score`）。
-  - **本版修复的 4 个缺陷**：(a) `ftsRankedCandidates` 在 FTS 未命中时返回 `[]` 导致 `searchProject` 调用 `ftsMap.has(...)` 抛「is not a function」，且使中文关键词检索失效（FTS5 unicode61 无法切分嵌在中文里的拉丁词）——改为返回 `null` 回退子串匹配；(b) `matchFilters` 未识别裸叶子 `{key,op,value}`（被误当普通对象逐 key eq），导致 `delete_by_filter` 传单叶子过滤器时 `deleted:0`——增加叶子识别分支；(c) 事实抽取管线丢弃调用方 `tags`（只留 `auto-captured`），与旧 `doAdd` 路径不一致且致按 tags 过滤落空——改为合并调用方 tags；(d) 评测基准原用 `POST /api/memories`（直存不抽取）测类别，改走 `/api/capture` 并轮询回捞。端到端验证见 `verify_v111.js`（14/14 通过），基准 `eval/bench_v111.js`（综合分 ~0.92）。
-- **v1.10.0**：补齐与 Mem0 的四项能力差距（零新增 npm 依赖，全部落在 SQLite 镜像层，与主存储 Qdrant 解耦）：① **FTS5 全文索引**（`memory_fts` 虚拟表，`bm25()` 评分）——补齐 Qdrant 无原生 BM25 的短板；`searchProject` 在 `keyword` 模式硬过滤 FTS 命中、`hybrid` 模式对语义候选追加 BM25 boost（`score + fs*0.5`），并回补 FTS 命中的语义候选。② **持久化知识图谱**（`kg_entities`/`kg_relations` 表，聚合跨记忆的实体/关系共现，独立于 Qdrant payload）——新增 `GET /api/kg`（导出）、`GET /api/kg/neighbors`、`POST /api/reindex`（FTS+图谱重建）；admin 新增「聚合图谱 + 全文索引」卡片，力导向可视化。③ **记忆巩固 / 自动压缩**（`memory.consolidate`）——按 `entity_names[0]||tags[0]` 聚类低显著性（confidence<0.7 或 access_count<3）碎片记忆，LLM 归纳为一条 `consolidated` 记忆，原记忆标记 SUPERSEDED（过期）+ `SUPERSEDE` 变更日志；`POST /api/consolidate` 触发。④ **P3 技术债清理**：去重 `dedupFind` 改为显式项目作用域（杜绝跨项目误合并）；实体词表改为增量 `addEntityVocab`（不再每次写入全量 `scrollAll` O(n)）；`doList` 终排改为分数优先（`updated_at` 兜底）。另新增 `POST /api/memories`（此前 REST 层缺写入端点，仅 MCP `add_memory` 存在）。端到端验证见 `verify_v110.js`。
-- **v1.9.0**：存储后端由 Elasticsearch 切换为 **Qdrant**（向量 + 结构化 payload，过滤/语义检索一体）；ES 已停止，仅在 `qdrant_url` 未配置或无嵌入时降级本地 SQLite。新增 `lib/qdrant.js` 适配器；`backend.qdrantFilter`/`memory.expiredFilter` 规避 Qdrant 1.18.3 的 `should`/`min_should` 非标准结构（改用 `must_not` + 双 `must` 过滤）。修复溯源缺口：每次捕获（`reconcileFact`/`captureText`）统一盖 `source.trigger='capture'` + `captured_at`，`normalizeSource` 空输入不再返回 null。端到端验证见 `verify_qdrant_regression.py`。
+  - **本版修复的 4 个缺陷**：(a) `ftsRankedCandidates` 在 FTS 未命中时返回 `[]` 导致 `searchProject` 调用 `ftsMap.has(...)` 抛「is not a function」，且使中文关键词检索失效（FTS5 unicode61 无法切分嵌在中文里的拉丁词）——改为返回 `null` 回退子串匹配；(b) `matchFilters` 未识别裸叶子 `{key,op,value}`（被误当普通对象逐 key eq），导致 `delete_by_filter` 传单叶子过滤器时 `deleted:0`——增加叶子识别分支；(c) 事实抽取管线丢弃调用方 `tags`（只留 `auto-captured`），与旧 `doAdd` 路径不一致且致按 tags 过滤落空——改为合并调用方 tags；(d) 评测基准原用 `POST /api/memories`（直存不抽取）测类别，改走 `/api/capture` 并轮询回捞。端到端验证见 `node test/run.js`（14/14 通过），基准 `eval/bench_v111.js`（综合分 ~0.92）。
+- **v1.10.0**：补齐与 Mem0 的四项能力差距（零新增 npm 依赖，全部落在 SQLite 镜像层，与主存储 Qdrant 解耦）：① **FTS5 全文索引**（`memory_fts` 虚拟表，`bm25()` 评分）——补齐 Qdrant 无原生 BM25 的短板；`searchProject` 在 `keyword` 模式硬过滤 FTS 命中、`hybrid` 模式对语义候选追加 BM25 boost（`score + fs*0.5`），并回补 FTS 命中的语义候选。② **持久化知识图谱**（`kg_entities`/`kg_relations` 表，聚合跨记忆的实体/关系共现，独立于 Qdrant payload）——新增 `GET /api/kg`（导出）、`GET /api/kg/neighbors`、`POST /api/reindex`（FTS+图谱重建）；admin 新增「聚合图谱 + 全文索引」卡片，力导向可视化。③ **记忆巩固 / 自动压缩**（`memory.consolidate`）——按 `entity_names[0]||tags[0]` 聚类低显著性（confidence<0.7 或 access_count<3）碎片记忆，LLM 归纳为一条 `consolidated` 记忆，原记忆标记 SUPERSEDED（过期）+ `SUPERSEDE` 变更日志；`POST /api/consolidate` 触发。④ **P3 技术债清理**：去重 `dedupFind` 改为显式项目作用域（杜绝跨项目误合并）；实体词表改为增量 `addEntityVocab`（不再每次写入全量 `scrollAll` O(n)）；`doList` 终排改为分数优先（`updated_at` 兜底）。另新增 `POST /api/memories`（此前 REST 层缺写入端点，仅 MCP `add_memory` 存在）。端到端验证见 `node test/run.js`。
+- **v1.9.0**：存储后端由 Elasticsearch 切换为 **Qdrant**（向量 + 结构化 payload，过滤/语义检索一体）；ES 已停止，仅在 `qdrant_url` 未配置或无嵌入时降级本地 SQLite。新增 `lib/qdrant.js` 适配器；`backend.qdrantFilter`/`memory.expiredFilter` 规避 Qdrant 1.18.3 的 `should`/`min_should` 非标准结构（改用 `must_not` + 双 `must` 过滤）。修复溯源缺口：每次捕获（`reconcileFact`/`captureText`）统一盖 `source.trigger='capture'` + `captured_at`，`normalizeSource` 空输入不再返回 null。端到端验证见 `node test/run.js`（Qdrant 主存储回归由 `qdrant_regression.js` 覆盖）。
 - **v1.8.0**：按功能拆分 `lib/` 模块（config/util/embed/backend/intelligence/projects/graph/facts/memory/capture/correction/quality/diagnostics/rest/mcp），server.js 由单体改为薄入口；新增 B1 用户纠正学习（`correct_memory` 工具 + `POST /api/correct`）与质量监控（`quality.js` + `/api/metrics` + admin 质量监控 Tab）。
 - **v1.7.0**：项目隔离 + 跨项目借鉴 + 溯源。① 项目间强弱关联（`project_links` 表 + `manage_project_link` 工具 + `/api/project-links` 接口），检索/列出时按 `relationDecay(strength)=0.2+0.6*s` 衰减借用关联项目记忆；`include_related` 可逐请求关闭。② 记忆溯源：`normalizeSource` 统一打 `captured_at`/`trigger`，支持 `conversation_id/message_id/url/file/line`；`/admin` 新增「溯源」列与弹窗。修复 `doList` 误用 `hitsToRows([h])` 导致 500、跨项目 `include_related` 覆盖在 ES 路径不生效。
-  - **v1.7.0 追加修复（功能互查）**：③ `doList` 跨项目记忆此前只对主项目记忆赋基准分、关联记忆未乘 `relationDecay` 且因走 `bool.filter` 查询 `_score` 恒为 0 导致衰减成空操作——现已统一主=1/关联=decay 基准分，列表视图关联记忆稳定排在后面。④ 生命周期清理（`cleanupExpired`/`purgeMemories`）原只按 `updated_at` 删，过期 session/TTL 记忆被隐藏却永不删除（索引膨胀、且被合并更新的过期记忆逃过清理）——改为同时按 `expires_at<now` 删除。⑤ 跨项目借鉴的 `bumpAccess` 耦合：原 `doSearch` 对所有返回记忆（含借来的）做访问强化，导致在 A 项目检索会刷新 B 项目记忆的 `last_accessed_at`、使其常驻新鲜——现只强化主项目记忆（`!r.related_project`）。端到端验证见 `verify_qdrant_regression.py`
+  - **v1.7.0 追加修复（功能互查）**：③ `doList` 跨项目记忆此前只对主项目记忆赋基准分、关联记忆未乘 `relationDecay` 且因走 `bool.filter` 查询 `_score` 恒为 0 导致衰减成空操作——现已统一主=1/关联=decay 基准分，列表视图关联记忆稳定排在后面。④ 生命周期清理（`cleanupExpired`/`purgeMemories`）原只按 `updated_at` 删，过期 session/TTL 记忆被隐藏却永不删除（索引膨胀、且被合并更新的过期记忆逃过清理）——改为同时按 `expires_at<now` 删除。⑤ 跨项目借鉴的 `bumpAccess` 耦合：原 `doSearch` 对所有返回记忆（含借来的）做访问强化，导致在 A 项目检索会刷新 B 项目记忆的 `last_accessed_at`、使其常驻新鲜——现只强化主项目记忆（`!r.related_project`）。端到端验证见 `node test/run.js`（Qdrant 主存储回归由 `qdrant_regression.js` 覆盖）
 - **v1.6.0**：记忆分类 `memory_type`（user/agent/session，与 `scope`/`category` 正交）+ `salience` 强化评分（`0.5*重要性 + 0.5*访问强化`，搜索命中回写 `access_count`/`last_accessed_at`）；时间衰减基准改为 `last_accessed_at`（越回想越巩固）；修复 ES `bool.should` 过滤失效与 `GET /api/memories` 漏解析 `memory_type`
 - **v1.5.3**：把 `fact_entities` 兜底扩展到 `doUpdate` 全路径（supplement / contradict 覆盖 / dedup-merge 分支），云端模型在更新与新建场景均不再丢实体（与 doAdd 一致）
 - **v1.5.2**：修复云端模型（deepseek v4-flash/pro）`entities` 恒空——强化 `extractFacts` 提示词（entities 标 REQUIRED + 中文 few-shot）+ `reconcileFact` 透传 `fact_entities` + `doAdd` 加事实阶段实体兜底

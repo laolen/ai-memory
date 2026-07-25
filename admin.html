@@ -372,7 +372,6 @@ function setStatus(h) {
   const db = $('#st-qdrant'), emb = $('#st-emb');
   if (h.store === 'qdrant' && h.qdrant_connected) { db.innerHTML = '<span class="dot ok"></span>Qdrant 已连接'; }
   else if (h.store === 'sqlite') { db.innerHTML = '<span class="dot warn"></span>SQLite 降级（无 Qdrant）'; }
-  else if (h.store === 'elasticsearch') { db.innerHTML = '<span class="dot warn"></span>ES 已连接（历史后端）'; }
   else { db.innerHTML = '<span class="dot bad"></span>Qdrant 未连接'; }
   if (h.config && h.config.embedding_enabled) { emb.innerHTML = '<span class="dot ok"></span>向量已启用'; }
   else { emb.innerHTML = '<span class="dot warn"></span>向量未启用'; }

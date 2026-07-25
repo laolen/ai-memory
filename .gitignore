@@ -1,5 +1,7 @@
 # 运行时生成（降级库 / 监听偏移 / 备份 / 配置）
 memories.db
+memories.db-shm
+memories.db-wal
 .capture.offsets.json
 config.json
 *.bak
@@ -7,3 +9,17 @@ config.json
 node_modules/
 .env
 .DS_Store
+
+# 测试文件：本地保留，不推送（用户要求）
+test/
+test_full.js
+test_deep.js
+verify_*.js
+verify_*.py
+
+# 本地数据 / 部署产物（不推送）
+.workbuddy/
+backups/
+
+# 部署报告含服务器凭据，禁止推送
+DEPLOY_REPORT_*.md

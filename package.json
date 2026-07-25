@@ -5,10 +5,9 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "verify": "node lib/verify_v113.js"
+    "verify": "node test/run.js"
   },
   "dependencies": {
-    "@elastic/elasticsearch": "^8.19.2",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.11.1"
   }

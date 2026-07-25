@@ -233,6 +233,44 @@
   </div>
 
   <div class="card" style="margin-top:18px">
+    <h3 style="margin-top:0">高级配置（v1.14.0+）</h3>
+    <p class="muted" style="margin:4px 0">MMR 多样性、Webhook 推送、Reranker 精排、API 鉴权密钥等。</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div><input type="checkbox" id="c-mmr" style="width:auto" /> 多样性重排 (MMR)</div>
+      <div style="max-width:150px"><label>MMR λ (0=纯语义 1=纯多样)</label><input id="c-mmr-lambda" type="number" step="0.05" min="0" max="1" value="0.3" /></div>
+      <div><input type="checkbox" id="c-salience" style="width:auto" /> 强化评分 (salience)</div>
+      <div><input type="checkbox" id="c-related-proj" style="width:auto" /> 跨项目记忆关联</div>
+      <div><input type="checkbox" id="c-auto-compress" style="width:auto" /> 自动压缩 (consolidate)</div>
+      <div><input type="checkbox" id="c-correct-auto" style="width:auto" /> 自动纠正检测</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+      <div><label>Reranker 端点</label><input id="c-reranker-url" placeholder="留空=不用 reranker" /></div>
+      <div><label>Reranker 模型</label><input id="c-reranker-model" placeholder="cross-encoder 模型名" /></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
+      <div><label>备份路径</label><input id="c-backup-path" placeholder="./backups" /></div>
+      <div style="max-width:150px"><label>工作记忆有效小时</label><input id="c-working-ttl" type="number" step="1" min="0" value="24" /></div>
+    </div>
+    <div style="margin-top:8px">
+      <div><label>Webhook 推送 URL (逗号分隔多个)</label><input id="c-webhook-urls" placeholder="https://hooks.example.com/webhook" /></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px">
+        <div><input type="checkbox" id="c-webhook" style="width:auto" /> 启用 Webhook 推送</div>
+        <div style="max-width:150px"><label>超时 (ms)</label><input id="c-webhook-timeout" type="number" step="100" min="1000" value="5000" /></div>
+      </div>
+      <div style="margin-top:6px"><label>Webhook 签名密钥</label><input id="c-webhook-secret" type="password" placeholder="留空=不签名" /></div>
+      <div style="margin-top:6px"><label>API 鉴权密钥 (JSON 数组，如 ["key1","key2"])</label><input id="c-api-keys" placeholder='[] = 不启用鉴权' /></div>
+    </div>
+    <div style="margin-top:8px">
+      <span class="muted" style="font-size:12px">生命���期策略：</span>
+      <select id="c-lifecycle" style="margin-left:6px">
+        <option value="none">不过期</option><option value="ttl">按过期时间</option><option value="adaptive">自适应</option>
+      </select>
+      <span class="muted" style="font-size:12px;margin-left:16px">事实抽取版本：</span>
+      <select id="c-extract-ver" style="margin-left:6px">
+        <option value="v2">v2（当前）</option><option value="v1">v1（兼容旧流程）</option>
+      </select>
+    </div>
+  </div>  <div class="card" style="margin-top:18px">
     <h3 style="margin-top:0">自动捕获测试</h3>
     <p class="muted" style="margin:4px 0">粘贴一段对话/文本，调用 POST /api/capture 即时提炼成记忆（不依赖配置开关也能试）。</p>
     <div class="row">
@@ -563,6 +601,24 @@ async function loadConfig() {
   $('#c-kg-key').value = c.kg_api_key ? '******' : '';
   $('#c-kg-max').value = (c.kg_max_entities != null) ? c.kg_max_entities : 30;
   $('#c-kg-syn').value = (c.kg_synonyms && Object.keys(c.kg_synonyms).length) ? JSON.stringify(c.kg_synonyms) : '';
+  // 高级配置加载
+  $('#c-mmr').checked = !!c.mmr_enabled;
+  $('#c-mmr-lambda').value = (c.mmr_lambda != null) ? c.mmr_lambda : 0.3;
+  $('#c-salience').checked = (c.salience_enabled !== false);
+  $('#c-related-proj').checked = (c.related_projects_enabled !== false);
+  $('#c-auto-compress').checked = !!c.auto_compress;
+  $('#c-correct-auto').checked = !!c.correction_auto_detect;
+  $('#c-reranker-url').value = c.reranker_url || '';
+  $('#c-reranker-model').value = c.reranker_model || '';
+  $('#c-backup-path').value = c.backup_path || './backups';
+  $('#c-working-ttl').value = (c.working_ttl_hours != null) ? c.working_ttl_hours : 24;
+  $('#c-webhook').checked = !!c.webhook_enabled;
+  $('#c-webhook-urls').value = Array.isArray(c.webhook_urls) ? c.webhook_urls.join(',') : '';
+  $('#c-webhook-timeout').value = (c.webhook_timeout_ms != null) ? c.webhook_timeout_ms : 5000;
+  $('#c-webhook-secret').value = c.webhook_secret || '';
+  $('#c-api-keys').value = Array.isArray(c.api_keys) && c.api_keys.length ? '******' : '';
+  $('#c-lifecycle').value = c.lifecycle_policy || 'none';
+  $('#c-extract-ver').value = c.extract_version || 'v2';
 }
 
 async function saveConfig() {
@@ -599,7 +655,25 @@ async function saveConfig() {
     source_trust_weights: (() => { try { return JSON.parse($('#c-source-weights').value || '{}'); } catch (e) { return {}; } })(),
     kg_api_key: $('#c-kg-key').value,
     kg_max_entities: parseInt($('#c-kg-max').value) || 30,
-    kg_synonyms: (() => { try { const v = $('#c-kg-syn').value.trim(); return v ? JSON.parse(v) : {}; } catch (e) { return {}; } })()
+    kg_synonyms: (() => { try { const v = $('#c-kg-syn').value.trim(); return v ? JSON.parse(v) : {}; } catch (e) { return {}; } })(),
+    // 高级配置保存
+    mmr_enabled: $('#c-mmr').checked,
+    mmr_lambda: Number($('#c-mmr-lambda').value) || 0.3,
+    salience_enabled: $('#c-salience').checked,
+    related_projects_enabled: $('#c-related-proj').checked,
+    auto_compress: $('#c-auto-compress').checked,
+    correction_auto_detect: $('#c-correct-auto').checked,
+    reranker_url: $('#c-reranker-url').value,
+    reranker_model: $('#c-reranker-model').value,
+    backup_path: $('#c-backup-path').value || './backups',
+    working_ttl_hours: parseInt($('#c-working-ttl').value) || 24,
+    webhook_enabled: $('#c-webhook').checked,
+    webhook_urls: $('#c-webhook-urls').value ? $('#c-webhook-urls').value.split(',').map(s => s.trim()).filter(Boolean) : [],
+    webhook_timeout_ms: parseInt($('#c-webhook-timeout').value) || 5000,
+    webhook_secret: $('#c-webhook-secret').value,
+    api_keys: (() => { const v = $('#c-api-keys').value.trim(); return v === '******' ? '******' : v ? (() => { try { return JSON.parse(v); } catch (e) { return []; } })() : []; })(),
+    lifecycle_policy: $('#c-lifecycle').value,
+    extract_version: $('#c-extract-ver').value,
   };
   showMsg('#cfg-msg', '保存中，即将重启服务…', 'info');
   const r = await fetch('/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });

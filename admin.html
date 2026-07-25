@@ -1089,15 +1089,16 @@ function closeSrc() { $('#src-modal').classList.remove('show'); }
 
 async function loadDocs() {
   const box = $('#docs');
+  const loc = getLocale();
   try {
     const r = await fetch('/api/docs'); const d = await r.json();
     const toolRows = (d.tools || []).map(t => {
       const params = Object.entries(t.inputSchema.properties || {}).map(([k, v]) => {
         const req = (t.inputSchema.required || []).includes(k) ? ' <span style="color:#f85149">*</span>' : '';
         const en = v.enum ? ' enum=' + JSON.stringify(v.enum) : '';
-        return '<li><code>' + esc(k) + '</code> (' + esc(v.type) + en + ')' + req + (v.description ? ' — ' + esc(v.description) : '') + '</li>';
+        return '<li><code>' + esc(k) + '</code> (' + esc(v.type) + en + ')' + req + ((loc === 'zh' && v.zh) ? ' — ' + esc(v.zh) : (v.description ? ' — ' + esc(v.description) : '')) + '</li>';
       }).join('');
-      return '<div style="margin-bottom:14px"><b>' + esc(t.name) + '</b> <span class="muted">' + esc(t.description || '') + '</span>'
+      return '<div style="margin-bottom:14px"><b>' + esc(t.name) + '</b> <span class="muted">' + esc((loc === 'zh' && t.zh) ? t.zh : (t.description || '')) + '</span>'
         + '<ul style="margin:4px 0 0 18px;color:#c9d1d9;font-size:12.5px">' + (params || '<li class="muted" data-i18n="el-153">无参数</li>') + '</ul></div>';
     }).join('');
     const apiRows = (d.rest_api || []).map(a =>

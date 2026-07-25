@@ -688,6 +688,7 @@ window.fetch = function(url, opts) {
   if (key) {
     opts.headers = opts.headers || {};
     opts.headers['Authorization'] = 'Bearer ' + key;
+    opts.headers['X-Requested-With'] = 'ai-memory';
   }
   return _origFetch.call(this, url, opts).then(async r => {
     if (r.status === 401 && url.toString().startsWith('/api/')) {

@@ -322,7 +322,7 @@
 <!-- 质量监控 (v1.8.0) -->
 <div class="pane" id="pane-quality">
   <div class="card">
-    <h3 style="margin-top:0">质量监控面板 (v1.8.0)</h3>
+    <h3 style="margin-top:0" data-i18n="sect-quality">质量监控面板</h3>
     <p class="muted" style="margin:4px 0">实时采集各操作计数 / 错误数 / 平均延迟，按操作与按日汇总（SQLite metrics 表持久化）。进程重启后「实时」清零，「按日」保留历史。</p>
     <div class="row" id="q-live" style="gap:12px"></div>
     <div style="margin-top:10px"><button class="ghost" data-i18n="btn-refresh" data-i18n="btn-refresh" onclick="loadMetrics()">刷新</button><span id="q-msg" class="msg" style="margin-left:10px"></span></div>
@@ -406,7 +406,7 @@
     <h2 style="margin:0 0 8px 0;color:#e6edf3">data-i18n="auth-login-title">data-i18n="auth-login-title">鉴权需要</h2>
     <p class="muted" style="margin:0 0 16px 0;font-size:13px">请输入你在 config.json 的 api_keys 中配置的密钥</p>
     <div style="position:relative;margin-bottom:12px">
-      <input id="login-key" type="password" placeholder="输入密钥" style="width:100%;padding:10px 36px 10px 12px;border:1px solid #30363d;border-radius:8px;background:#0d1117;color:#e6edf3;box-sizing:border-box" />
+      <input id="login-key" type="password" data-i18n="auth-placeholder" placeholder="输入密钥" style="width:100%;padding:10px 36px 10px 12px;border:1px solid #30363d;border-radius:8px;background:#0d1117;color:#e6edf3;box-sizing:border-box" />
       <span id="login-eye" onclick="toggleKeyVis()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:#8b949e;font-size:13px;user-select:none">显示</span>
     </div>
     <button id="login-btn" onclick="login()" style="width:100%;padding:10px;border:none;border-radius:8px;background:#238636;color:#fff;cursor:pointer;font-size:14px">确认</button>
@@ -432,6 +432,10 @@ const __lang = {
     'auth-login-title':'鉴权需要', 'auth-login-desc':'请输入你在 config.json 的 api_keys 中配置的密钥', 'auth-placeholder':'输入密钥', 'auth-confirm':'确认',
     'msg-err-key':'请输入密钥', 'msg-bad-key':'密钥错误，请重新输入', 'msg-conn-fail':'连接失败，请重试',
     'st-auth-logged':'已登录', 'st-auth-unlogged':'未登录', 'lang-btn':'EN',
+    'st-db-ok':'Qdrant 已连接', 'st-db-sqlite':'SQLite 降级（无 Qdrant）', 'st-db-bad':'Qdrant 未连接',
+    'st-emb-on':'向量已启用', 'st-emb-off':'向量未启用',
+    'lb-exact':'精确', 'lb-vector':'向量', 'lb-err':'去重错误',
+    'test-running':'测试中…', 'test-fail':'请求失败', 'sect-quality':'质量监控', 'sect-database':'数据库与嵌入', 'sect-llm-capture':'LLM 与捕获', 'sect-kg':'知识图谱',
   },
   en: {
     'tab-data':'Data', 'tab-config':'Config', 'tab-help':'Help', 'tab-graph':'Knowledge Graph', 'tab-links':'Project Links', 'tab-quality':'Quality',
@@ -444,6 +448,10 @@ const __lang = {
     'auth-login-title':'Authentication Required', 'auth-login-desc':'Enter your API key configured in config.json api_keys', 'auth-placeholder':'Enter API key', 'auth-confirm':'Login',
     'msg-err-key':'Please enter a key', 'msg-bad-key':'Invalid key, please try again', 'msg-conn-fail':'Connection failed',
     'st-auth-logged':'Logged in', 'st-auth-unlogged':'Not logged in', 'lang-btn':'中文',
+    'st-db-ok':'Qdrant Connected', 'st-db-sqlite':'SQLite Fallback', 'st-db-bad':'Qdrant Disconnected',
+    'st-emb-on':'Embedding Enabled', 'st-emb-off':'Embedding Disabled',
+    'lb-exact':'Exact', 'lb-vector':'Vector', 'lb-err':'Dedup Err',
+    'test-running':'Testing\u2026', 'test-fail':'Request failed', 'sect-quality':'Quality Monitor', 'sect-database':'Database & Embedding', 'sect-llm-capture':'LLM & Capture', 'sect-kg':'Knowledge Graph',
   }
 };
 function t(key) { const loc = __lang[getLocale()]; return loc && loc[key] || key; }
@@ -492,14 +500,14 @@ window.fetch = function(url, opts) {
 // 登录弹窗
 function login() {
   const key = document.getElementById('login-key').value.trim();
-  if (!key) { document.getElementById('login-msg').textContent = '请输入密钥'; return; }
+  if (!key) { document.getElementById('login-msg').textContent = t('msg-err-key'); return; }
   setAuthKey(key);
   // 用需鉴权的 /api/stats 验证 key 是否正确（/api/health 免鉴权，无法区分正确/错误 key）
   fetch('/api/stats', { headers: { 'Authorization': 'Bearer ' + key } }).then(r => {
-    if (!r.ok) { setAuthKey(''); document.getElementById('login-msg').textContent = '密钥错误，请重新输入'; return; }
+    if (!r.ok) { setAuthKey(''); document.getElementById('login-msg').textContent = t('msg-bad-key'); return; }
     document.getElementById('login-overlay').style.display = 'none';
     document.getElementById('login-msg').textContent = '';
-  }).catch(() => { setAuthKey(''); document.getElementById('login-msg').textContent = '连接失败，请重试'; });
+  }).catch(() => { setAuthKey(''); document.getElementById('login-msg').textContent = t('msg-conn-fail'); });
 }
 // 密码可见性切换
 function toggleKeyVis() {
@@ -526,19 +534,19 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
 
 function setStatus(h) {
   const db = $('#st-qdrant'), emb = $('#st-emb');
-  if (h.store === 'qdrant' && h.qdrant_connected) { db.innerHTML = '<span class="dot ok"></span>Qdrant 已连接'; }
-  else if (h.store === 'sqlite') { db.innerHTML = '<span class="dot warn"></span>SQLite 降级（无 Qdrant）'; }
-  else { db.innerHTML = '<span class="dot bad"></span>Qdrant 未连接'; }
-  if (h.config && h.config.embedding_enabled) { emb.innerHTML = '<span class="dot ok"></span>向量已启用'; }
-  else { emb.innerHTML = '<span class="dot warn"></span>向量未启用'; }
+  if (h.store === 'qdrant' && h.qdrant_connected) { db.innerHTML = '<span class="dot ok"></span>' + t('st-db-ok'); }
+  else if (h.store === 'sqlite') { db.innerHTML = '<span class="dot warn"></span>' + t('st-db-sqlite'); }
+  else { db.innerHTML = '<span class="dot bad"></span>' + t('st-db-bad'); }
+  if (h.config && h.config.embedding_enabled) { emb.innerHTML = '<span class="dot ok"></span>' + t('st-emb-on'); }
+  else { emb.innerHTML = '<span class="dot warn"></span>' + t('st-emb-off'); }
   // dedup 与错误统计
   const dd = h.dedup_stats || {}; const es = h.err_stats || {};
-  $('#st-dedup').textContent = '精确:' + (dd.exact||0) + ' 向量:' + (dd.vector||0) + ' 去重错误:' + (dd.err||0) + ' | 嵌入:' + (es.embed||0) + ' FTS:' + (es.fts||0) + ' 图谱:' + (es.kg||0) + ' webhook:' + (es.webhook||0) + ' 强化:' + (es.bump||0) + ' 审计:' + (es.changelog||0) + ' 清理:' + (es.cleanup||0) + ' 捕获:' + (es.capture||0) + ' 备份:' + (es.backup||0) + ' 配置:' + (es.config||0) + ' 其他:' + (es.other||0);
+  $('#st-dedup').textContent = t('lb-exact') + ':' + (dd.exact||0) + ' ' + t('lb-vector') + ':' + (dd.vector||0) + ' ' + t('lb-err') + ':' + (dd.err||0) + ' | embed:' + (es.embed||0) + ' fts:' + (es.fts||0) + ' kg:' + (es.kg||0) + ' webhook:' + (es.webhook||0) + ' bump:' + (es.bump||0) + ' changelog:' + (es.changelog||0) + ' cleanup:' + (es.cleanup||0) + ' capture:' + (es.capture||0) + ' backup:' + (es.backup||0) + ' config:' + (es.config||0) + ' other:' + (es.other||0);
   // 动态标题显示版本号
-  if (h.version) { $('#header-title').textContent = 'AI Memory 管理界面 v' + h.version; }
+  if (h.version) { $('#header-title').textContent = t('hdr-title') + ' v' + h.version; }
   // ���权状态
   const ak = getAuthKey();
-  $('#st-auth').textContent = ak ? '🔑 已登录' : '🔒 未登录';
+  $('#st-auth').textContent = ak ? ('🔑 ' + t('st-auth-logged')) : ('🔒 ' + t('st-auth-unlogged'));
 }
 
 async function health() {
@@ -742,7 +750,7 @@ async function saveConfig() {
 async function testBackend(type) {
   const status = document.getElementById('t-' + type);
   const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
-  status.textContent = '测试中…'; status.className = 'test-msg run';
+  status.textContent = t('test-running'); status.className = 'test-msg run';
   const body = { type };
   if (type === 'embedding') {
     body.embedding_url = val('c-emb-url'); body.embedding_model = val('c-emb-model');

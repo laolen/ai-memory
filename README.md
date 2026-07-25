@@ -188,13 +188,16 @@
 
 | 文件 | 作用 |
 |------|------|
-| `server.js` | 后端主程序（MCP SSE + Admin + REST，含 `/api/test-backend`、四个测试助手、本地/云端鉴权、全部降级逻辑） |
+| `server.js` | 薄入口：加载 config → 启动 Fastify HTTP 服务（MCP SSE + Admin + REST）|
+| `lib/rest.js` | **Fastify v5** 应用：40+ 路由、鉴权中间件、JSON Schema 校验、错误处理、请求日志。自动生成 OpenAPI 文档（`/api/docs`）|
 | `admin.html` | 管理界面（服务启动时读入内存，**改完必须重启服务才生效**） |
 | `config.json` | 运行配置（Qdrant 地址、嵌入端点、各 `api_key` 等；部署脚本**不覆盖**此文件） |
-| `deploy.js` | **推荐**部署脚本（sshtool/ssh2，沙箱友好）。完整流程：远端整目录备份→本地打包→SFTP 上传→远端解压+语法全检→重启→健康检查。`REMOTE_HOST` 可指定目标主机 |
+| `deploy.js` | **推荐**部署脚本（sshtool/ssh2��沙箱友好）。完整流程：远端整目录备份→本地打包→SFTP 上传→远端解压+语法全检→重启→健康检查 |
+| `Dockerfile` + `docker-compose.yml` | Docker 全栈部署（Qdrant + ai-memory 容器）|
 | `LICENSE.md` | MIT 许可证（中文） |
 | `memories.db` | （运行时生成）Qdrant 不可用时的本地 SQLite 降级库 |
-| `.capture.offsets.json` | （运行时生成）文件监听偏移量，重启续传 |
+| `lib/memory_lifecycle.js` | 清理/巩固/批量操作（从 memory.js 拆分）|
+| `lib/memory_work.js` | 短时工作记忆操作（从 memory.js 拆分）|
 | `server.js.bak-<时间戳>` / `admin.html.bak-<时间戳>` | 每次部署自动备份，用于回滚 |
 
 > 服务器上路径：`/opt/ai-memory/`，systemd 服务名 `ai-memory.service`。

@@ -39,7 +39,7 @@ async function main() {
   console.log('--- 2/7 本地打包 ---');
   const pkg = path.join(PROJ, `.deploy-${TS}.tar.gz`);
   const upkg = unixPath(pkg);
-  run(`tar czf "${upkg}" -C "${unixPath(PROJ)}" lib/*.js server.js admin.html`);
+  run(`tar czf "${upkg}" -C "${unixPath(PROJ)}" lib/*.js server.js admin.html package.json`);
 
   // 3) 上传
   console.log('--- 3/7 上传 ---');

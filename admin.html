@@ -6,20 +6,20 @@
 <title data-i18n="el-1">AI Memory 管理界面</title>
 <style>
   :root {
-    --bg:var(--bg); --panel:var(--panel); --input-bg:var(--input-bg); --border:var(--border); --border-strong:var(--border-strong);
-    --text:var(--text); --muted:var(--muted); --accent:var(--accent); --accent-border:var(--accent-border); --accent-bg:var(--accent-bg);
-    --ok:var(--ok); --ok-bg:var(--ok-bg); --ok-border:var(--ok-border);
-    --danger:var(--danger); --danger-bg:var(--danger-bg); --danger-border:var(--danger-border); --danger-btn:var(--danger-btn);
-    --info-bg:var(--info-bg); --warn:var(--warn); --warn-text:var(--warn-text); --warn-bg:var(--warn-bg); --warn-border:var(--warn-border);
-    --warn-btn:var(--warn-btn); --warn-btn-hover:var(--warn-btn-hover); --btn:var(--btn); --btn-hover:var(--btn-hover);
+    --bg:#0d1117; --panel:#161b22; --input-bg:#0d1117; --border:#30363d; --border-strong:#21262d;
+    --text:#e6edf3; --muted:#8b949e; --accent:#2f81f7; --accent-border:#1f6feb; --accent-bg:rgba(56,139,253,0.15);
+    --ok:#3fb950; --ok-bg:rgba(46,160,67,0.15); --ok-border:#238636;
+    --danger:#f85149; --danger-bg:rgba(248,81,73,0.15); --danger-border:#da3633; --danger-btn:#da3633;
+    --info-bg:rgba(56,139,253,0.15); --warn:#d29922; --warn-text:#d29922; --warn-bg:rgba(210,153,34,0.15); --warn-border:#9e6a03;
+    --warn-btn:#bb8009; --warn-btn-hover:#d29922; --btn:#238636; --btn-hover:#2ea043;
   }
   [data-theme="light"] {
-    --bg:var(--bg); --panel:var(--panel); --input-bg:var(--bg); --border:var(--border); --border-strong:var(--border-strong);
-    --text:var(--text); --muted:var(--muted); --accent:var(--accent); --accent-border:var(--accent-border); --accent-bg:var(--accent-bg);
-    --ok:var(--ok); --ok-bg:var(--ok-bg); --ok-border:var(--ok-border);
-    --danger:var(--danger); --danger-bg:var(--danger-bg); --danger-border:var(--danger-border); --danger-btn:var(--danger);
-    --info-bg:var(--accent-bg); --warn:var(--warn); --warn-text:var(--warn); --warn-bg:var(--warn-bg); --warn-border:var(--warn-border);
-    --warn-btn:var(--warn); --warn-btn-hover:var(--warn-btn-hover); --btn:var(--btn); --btn-hover:var(--ok);
+    --bg:#ffffff; --panel:#f6f8fa; --input-bg:#ffffff; --border:#d0d7de; --border-strong:#d8dee4;
+    --text:#1f2328; --muted:#656d76; --accent:#0969da; --accent-border:#0969da; --accent-bg:rgba(9,105,218,0.1);
+    --ok:#1a7f37; --ok-bg:rgba(31,136,61,0.1); --ok-border:#1a7f37;
+    --danger:#cf222e; --danger-bg:rgba(207,34,46,0.1); --danger-border:#cf222e; --danger-btn:#cf222e;
+    --info-bg:rgba(9,105,218,0.1); --warn:#9a6700; --warn-text:#9a6700; --warn-bg:rgba(154,103,0,0.1); --warn-border:#9a6700;
+    --warn-btn:#bf8700; --warn-btn-hover:#9a6700; --btn:#1a7f37; --btn-hover:#1c8137;
   }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -1317,12 +1317,12 @@ async function loadDocs() {
     const r = await fetch('/api/docs'); const d = await r.json();
     const toolRows = (d.tools || []).map(t => {
       const params = Object.entries(t.inputSchema.properties || {}).map(([k, v]) => {
-        const req = (t.inputSchema.required || []).includes(k) ? ' <span style="color:#f85149">*</span>' : '';
+        const req = (t.inputSchema.required || []).includes(k) ? ' <span style="color:var(--danger)">*</span>' : '';
         const en = v.enum ? ' enum=' + JSON.stringify(v.enum) : '';
         return '<li><code>' + esc(k) + '</code> (' + esc(v.type) + en + ')' + req + ((loc === 'zh' && v.zh) ? ' — ' + esc(v.zh) : (v.description ? ' — ' + esc(v.description) : '')) + '</li>';
       }).join('');
       return '<div style="margin-bottom:14px"><b>' + esc(t.name) + '</b> <span class="muted">' + esc((loc === 'zh' && t.zh) ? t.zh : (t.description || '')) + '</span>'
-        + '<ul style="margin:4px 0 0 18px;color:#c9d1d9;font-size:12.5px">' + (params || '<li class="muted" data-i18n="el-153">无参数</li>') + '</ul></div>';
+        + '<ul style="margin:4px 0 0 18px;color:var(--muted);font-size:12.5px">' + (params || '<li class="muted" data-i18n="el-153">无参数</li>') + '</ul></div>';
     }).join('');
     const apiRows = (d.rest_api || []).map(a =>
       '<tr><td><code>' + esc(a.method) + '</code></td><td><code>' + esc(a.path) + '</code></td><td>' + esc(a.desc) + '</td></tr>').join('');
@@ -1344,7 +1344,7 @@ async function loadDocs() {
       + '<h3 data-i18n="el-165">检索模式</h3>'
       + '<table><thead><tr><th data-i18n="el-166">模式</th><th data-i18n="el-161">说明</th></tr></thead><tbody>' + modeRows + '</tbody></table>'
       + '<h3 data-i18n="el-168">部署架构</h3><p class="muted">' + esc(d.architecture || '') + '</p>'
-      + '<h3 data-i18n="el-169">注意事项</h3><ul style="color:#c9d1d9;font-size:12.5px">' + notes + '</ul>';
+      + '<h3 data-i18n="el-169">注意事项</h3><ul style="color:var(--muted);font-size:12.5px">' + notes + '</ul>';
   applyLang();
   } catch (e) { box.innerHTML = t('msg-help-fail') + ': ' + esc(e.message); }
 }

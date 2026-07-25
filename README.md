@@ -191,7 +191,7 @@
 | `server.js` | 后端主程序（MCP SSE + Admin + REST，含 `/api/test-backend`、四个测试助手、本地/云端鉴权、全部降级逻辑） |
 | `admin.html` | 管理界面（服务启动时读入内存，**改完必须重启服务才生效**） |
 | `config.json` | 运行配置（Qdrant 地址、嵌入端点、各 `api_key` 等；部署脚本**不覆盖**此文件） |
-| `deploy.sh` | 一键部署脚本（连通性预检 → 整目录 tar 备份 → scp `lib/*.js` + `server.js` + `admin.html` → 远端 `node --check` 全检 → 重启 → 健康检查），`REMOTE` 变量可覆盖目标主机；不碰 `config.json` 与记忆数据 |
+| `deploy.js` | **推荐**部署脚本（sshtool/ssh2，沙箱友好）。完整流程：远端整目录备份→本地打包→SFTP 上传→远端解压+语法全检→重启→健康检查。`REMOTE_HOST` 可指定目标主机 |
 | `LICENSE.md` | MIT 许可证（中文） |
 | `memories.db` | （运行时生成）Qdrant 不可用时的本地 SQLite 降级库 |
 | `.capture.offsets.json` | （运行时生成）文件监听偏移量，重启续传 |
@@ -203,25 +203,37 @@
 
 ## 八、部署
 
-### 方式一：一键脚本
-在 `ai-memory-cloud/` 目录执行（需持有目标主机登录凭证）：
-```bash
-bash deploy.sh
-```
-脚本行为：连通性预检 → 远端整目录备份到 `/opt/ai-memory-backup-<时间戳>.tar.gz` → 上传 `lib/*.js` + `server.js` + `admin.html`（**`lib/` 是真正运行的代码目录，必须随部署覆盖**）→ 远端对 server.js 与全部 lib/*.js 逐个 `node --check` → `systemctl restart ai-memory` → 健康检查（核对 `version` / `store` / `qdrant_connected`）。绝不覆盖 `config.json` 与记忆数据（`memories.db*` / `backups/`）。目标主机由 `REMOTE` 变量决定（默认 `root@192.168.110.128`）。
+`/opt/ai-memory/lib/` 是唯一真正运行的代码目录（`server.js` 只 `require('./lib/config')` + `require('./lib/rest')`），所以部署**必须覆盖 `lib/`**，只拷 `server.js` 无效。
 
-### 方式二：手动
+### 方式一：deploy.js（推荐，沙箱友好）
 ```bash
-scp server.js admin.html root@192.168.110.128:/opt/ai-memory/
-ssh root@192.168.110.128 'cd /opt/ai-memory && node --check server.js && systemctl restart ai-memory'
+SSH2_PASSWORD=your_password node deploy.js
+```
+脚本行为：
+1. 远端整目录 tar 备份到 `/opt/ai-memory-backup-<时间戳>.tar.gz`
+2. 本地打包 `lib/*.js` + `server.js` + `admin.html`
+3. SFTP 上传到 `/tmp` → 远端解压覆盖
+4. 逐文件 `node --check` 语法全检（server.js + 全部 lib/*.js）
+5. 删除远端遗留死代码（`verify_v113.js` 等）
+6. `systemctl restart ai-memory`
+7. `/api/health` 检查（核对 `version`/`store`/`qdrant_connected`/`err_stats`）
+
+环境变量：`SSH2_PASSWORD`（密码）、`HOST`（目标 IP，默认 `192.168.110.128`）。
+绝不覆盖：`config.json`、`memories.db*`、`backups/`。
+
+### 方式二：手动 scp（有原生 ssh 时）
+```bash
+# 先备份
+ssh root@192.168.110.128 'tar czf /opt/ai-memory-backup-$(date +%Y%m%d-%H%M%S).tar.gz -C /opt ai-memory'
+# 拷贝全部代码文件（必须含 lib/）
+scp server.js admin.html lib/*.js root@192.168.110.128:/opt/ai-memory/
+# 语法检查 + 重启
+ssh root@192.168.110.128 'cd /opt/ai-memory && node --check server.js && for f in lib/*.js; do node --check "$f" || exit 1; done && systemctl restart ai-memory'
 ```
 
 ### 回滚
 ```bash
-ssh root@192.168.110.128 'cd /opt/ai-memory && \
-  cp -f server.js.bak-<时间戳> server.js && \
-  cp -f admin.html.bak-<时间戳> admin.html && \
-  systemctl restart ai-memory'
+ssh root@192.168.110.128 'systemctl stop ai-memory && rm -rf /opt/ai-memory && tar xzf /opt/ai-memory-backup-<时间戳>.tar.gz -C /opt && systemctl start ai-memory'
 ```
 
 ---

@@ -307,6 +307,19 @@ curl -X PUT http://localhost:6333/collections/memories -H 'Content-Type: applica
 嵌入和 LLM 端点通过环境变量配置（默认指向 `host.docker.internal` 的 Ollama/嵌入服务）。
 单构建 ai-memory 镜像：`docker build -t ai-memory .`。
 
+### 端到端测试（test/run.js）
+
+按功能拆分的端到端套件（`test/` 下 `health/memory_ops/io/stats/auth/config/lifecycle/correction/metrics/qdrant_regression/dedup/cleanup.js` + `unit.js` 纯函数单测 + `_common.js` 共享助手），由 `test/run.js` 顺序聚合。除 `unit.js`（毫秒级、不依赖 BASE）外，需在**完整部署环境**（Qdrant + 嵌入 + 捕获 LLM 在线）上跑。
+
+```bash
+# 对线上服务器（192.168.110.128:8765）跑全套端到端验证（含鉴权）
+API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js
+```
+
+- `BASE`：被测服务地址；`API_KEY`：服务端 `config.json` 中 `api_keys` 之一（测试助手自动附带 `Authorization: Bearer` 与 `X-Requested-With: ai-memory` 头）。
+- 长捕获管线：LLM/嵌入推理期间对客户端「无数据下发」，整段空闲可达 20~40s，故依赖服务侧 socket 超时已调高（≥120s），否则客户端会报 "other side closed"。
+- 期望输出：`===== OVERALL ok=N fail=0 =====`（N 随套件增减，v1.15.3 基线 81 项全过）。任一 `fail>0` 即阻断。
+
 ---
 
 ## 八、配置项详解（`config.json`）
@@ -377,7 +390,9 @@ curl -X PUT http://localhost:6333/collections/memories -H 'Content-Type: applica
 
 ## 十一、版本
 
-- **v1.15.2**（当前版本）：修复「使用帮助」在中文环境下无法加载。根因为帮助容器 `#docs` 自身误挂 `data-i18n="el-93"`，而 `el-93` 仅英文词典有；`MutationObserver` 触发的 `applyLang` 在中文下把刚写入的帮助内容回写为初始占位。移除该 `data-i18n` 后修复（用 jsdom 真机复现确认）。
+- **v1.15.3**（当前版本）：修复 4 个被早期崩溃掩盖的预存服务端缺陷（端到端测试 `test/run.js` 全过 81 项后暴露）：① **捕获管线偶发断连**——`_httpServer.timeout` 由 30s 调高至 120s，避免 LLM/嵌入推理期间（整段「无数据下发」可达 20~40s）socket 被提前销毁（客户端表现 "other side closed"）；② **`POST /api/correct/:id` 调用不存在的 `correction.correctMemory`**——改为 `correction.doCorrect({target_id, feedback, ...})`；③ **`/api/project-links` 路由调用不存在的 `projects.linkProjects/unlinkProjects`**——改为 `upsertProjectLink/removeProjectLink`，并兼容 `from/to` 与 `from_project/to_project` 两种命名；④ **`util.relEnabled` 把字符串 `'false'` 当作真值**——`include_related=false` 仍会借用跨项目记忆，现已正确归一化。另将端到端验证命令 `API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js` 写入 README 部署章。
+
+- **v1.15.2**：修复「使用帮助」在中文环境下无法加载。根因为帮助容器 `#docs` 自身误挂 `data-i18n="el-93"`，而 `el-93` 仅英文词典有；`MutationObserver` 触发的 `applyLang` 在中文下把刚写入的帮助内容回写为初始占位。移除该 `data-i18n` 后修复（用 jsdom 真机复现确认）。
 
 - **v1.15.1**：修复管理界面整页未上色——`:root` 与 `[data-theme="light"]` 原为 `--x:var(--x)` 自引用占位、无真实颜色值，导致主题切换无效、帮助文字不可见；填入深浅双调色板并将帮助渲染硬编码色改为 CSS 变量；`/api/docs` 的 `config_fields` 由 3 条补全至 28 条，对齐 `POST /api/config` 实际可配项。
 

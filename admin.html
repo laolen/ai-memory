@@ -134,8 +134,14 @@
     <div style="flex:0 0 auto"><button onclick="runSearch()" data-i18n="el-13">搜索</button></div>
   </div>
   <div id="data-msg"></div>
+  <div id="bulk-bar" style="display:flex;gap:8px;align-items:center;margin:8px 0;flex-wrap:wrap">
+    <button class="ghost" onclick="bulkDelete()" data-i18n="el-178">批量删除</button>
+    <button class="ghost" onclick="bulkPin()" data-i18n="el-179">批量固定</button>
+    <button class="ghost" onclick="bulkExport()" data-i18n="el-180">批量导出 JSON</button>
+    <span id="sel-count" class="muted" style="font-size:12.5px"></span>
+  </div>
   <table id="tbl">
-    <thead><tr><th data-i18n="el-14">内容</th><th data-i18n="el-15">项目</th><th data-i18n="el-16">会话</th><th data-i18n="el-17">标签</th><th data-i18n="el-18">类型</th><th data-i18n="el-19">分类</th><th data-i18n="el-20">记忆类型</th><th data-i18n="el-21">创建</th><th data-i18n="el-22">更新</th><th data-i18n="el-23">最近访问</th><th data-i18n="el-24">历史</th><th data-i18n="el-25">溯源</th><th>分</th><th data-i18n="el-26">显著性</th><th data-i18n="el-27">纠正</th><th></th></tr></thead>
+    <thead><tr><th style="width:34px"><input type="checkbox" id="sel-all" onchange="toggleSelAll(this.checked)" title="全选" /></th><th data-i18n="el-14">内容</th><th data-i18n="el-15">项目</th><th data-i18n="el-16">会话</th><th data-i18n="el-17">标签</th><th data-i18n="el-18">类型</th><th data-i18n="el-19">分类</th><th data-i18n="el-20">记忆类型</th><th data-i18n="el-21">创建</th><th data-i18n="el-22">更新</th><th data-i18n="el-23">最近访问</th><th data-i18n="el-24">历史</th><th data-i18n="el-25">溯源</th><th>分</th><th data-i18n="el-26">显著性</th><th data-i18n="el-27">纠正</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </div>
@@ -318,7 +324,10 @@
 
 <!-- 使用帮助 -->
 <div class="pane" id="pane-help">
-  <div id="docs" class="card" style="max-width:880px">加载中…</div>
+  <div class="card" style="max-width:880px;margin-bottom:10px">
+    <input id="docs-search" data-i18n="el-174" placeholder="搜索帮助（接口/配置/模式…）" oninput="renderDocs(this.value)" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);box-sizing:border-box" />
+  </div>
+  <div id="docs" class="card" style="max-width:880px" data-i18n-ignore>加载中…</div>
 </div>
 
 <!-- 知识图谱 -->
@@ -556,6 +565,10 @@ const __lang = {
     'opt-mode-keyword':'关键词', 'opt-mode-semantic':'语义', 'opt-mode-hybrid':'混合',
     'qc-total':'总操作数', 'qc-errors':'错误数', 'qc-latency':'平均延迟', 'qc-errrate':'错误率',
     'reltag-from':'来自关联项目（强度 {s}）', 'cap-merged':'[合并]',
+    'el-174':'搜索帮助（接口/配置/模式…）', 'el-175':'curl 调用示例', 'el-176':'遗忘曲线说明',
+    'el-177':'全选', 'el-178':'批量删除', 'el-179':'批量固定', 'el-180':'批量导出 JSON',
+    'el-181':'已选 {n} 项', 'el-182':'确认删除选中的 {n} 条记忆？', 'el-183':'已处理 {n} 条', 'el-184':'请先选择至少一条', 'el-185':'已导出 {n} 条为 JSON',
+    'el-186':'JSON 格式错误：{f}', 'el-187':'URL 格式不正确：{f}', 'el-188':'数值超出范围：{f}', 'el-189':'请先修正配置错误再保存',
   },
   en: {
     'tab-data':'Data', 'tab-config':'Config', 'tab-help':'Help', 'tab-graph':'Knowledge Graph', 'tab-links':'Project Links', 'tab-quality':'Quality',
@@ -798,6 +811,10 @@ const __lang = {
     'opt-mode-keyword':'Keyword', 'opt-mode-semantic':'Semantic', 'opt-mode-hybrid':'Hybrid',
     'qc-total':'Total ops', 'qc-errors':'Errors', 'qc-latency':'Avg latency', 'qc-errrate':'Error rate',
     'reltag-from':'From linked project (strength {s})', 'cap-merged':'[merged]',
+    'el-174':'Search help (API/config/mode…)', 'el-175':'curl Examples', 'el-176':'Forgetting Curve Explained',
+    'el-177':'Select All', 'el-178':'Bulk Delete', 'el-179':'Bulk Pin', 'el-180':'Bulk Export JSON',
+    'el-181':'{n} selected', 'el-182':'Delete {n} selected memories?', 'el-183':'Processed {n}', 'el-184':'Select at least one', 'el-185':'Exported {n} as JSON',
+    'el-186':'Invalid JSON: {f}', 'el-187':'Invalid URL: {f}', 'el-188':'Out of range: {f}', 'el-189':'Fix config errors before saving',
   }
 };
 function t(key, vars) {
@@ -810,6 +827,10 @@ function t(key, vars) {
 }
 function applyLang() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
+    // 防御性：被 JS 整体重写 innerHTML 的容器（如帮助页 #docs）带上 data-i18n-ignore，
+    // applyLang 只跳过「该元素自身」的翻译，其子树内的 [data-i18n] 仍正常翻译（英文模式双语）。
+    // 这样即便将来有人误给这类容器加 data-i18n，也不会被「还原」成空白/旧内容而把动态内容抹掉。
+    if (el.hasAttribute('data-i18n-ignore')) return;
     const key = el.dataset.i18n;
     // 首次遇到时，捕获元素的「原始中文 HTML」，用于切回中文时还原
     // （关键修复：以前 t() 返回 null 时直接 return，导致被改成英文后无法还原，卡在英文）
@@ -1000,7 +1021,7 @@ async function runSearch() {
       const lastAcc = (rw.last_accessed_at||'').replace('T',' ').slice(0,19);
       const histCell = (rw.history && rw.history.length) ? '<a class="hlink" onclick="showHistory(\'' + rw.id + '\')" data-i18n="el-143">' + rw.history.length + ' 版</a>' : '-';
       const relTag = rw.related_project ? '<span class="reltag" title="' + t('reltag-from', { s: strengthLabel(rw.relation_strength) }) + (rw.relation_note?('：'+esc(rw.relation_note)):'') + '">↳ ' + esc(rw.related_project) + ' (' + strengthLabel(rw.relation_strength) + ')</span> ' : '';
-      tr.innerHTML = '<td class="content">' + relTag + esc(rw.content) + '</td>' +
+      tr.innerHTML = '<td style="width:34px"><input type="checkbox" class="row-sel" data-id="' + esc(rw.id) + '" onchange="updateSelCount()" /></td>' + '<td class="content">' + relTag + esc(rw.content) + '</td>' +
         '<td>' + esc(rw.project || '-') + '</td><td>' + esc(rw.session || '-') + '</td>' +
         '<td>' + tags + '</td>' +
         '<td>' + esc(rw.type || '-') + '</td>' +
@@ -1020,6 +1041,7 @@ async function runSearch() {
       tb.appendChild(tr);
     });
   applyLang(); // 表格行动态注入的 data-i18n 也按当前语言渲染
+  updateSelCount();
   } catch (e) { showMsg('#data-msg', t('msg-query-fail') + ': ' + e.message, 'err'); }
 }
 
@@ -1029,6 +1051,54 @@ async function del(id) {
   if (!confirm(t('confirm-del'))) return;
   const r = await fetch('/api/memories/' + encodeURIComponent(id), { method: 'DELETE' });
   if (r.ok) runSearch(); else alert(t('msg-del-fail'));
+}
+
+// ---- 批量操作（多选 + 批量删除/固定/导出 JSON）----
+function getSelectedIds() {
+  return Array.from(document.querySelectorAll('#tbl tbody .row-sel:checked')).map(cb => cb.dataset.id);
+}
+function updateSelCount() {
+  const n = getSelectedIds().length;
+  const el = $('#sel-count'); if (el) el.textContent = n ? t('el-181', { n }) : '';
+}
+function toggleSelAll(checked) {
+  document.querySelectorAll('#tbl tbody .row-sel').forEach(cb => { cb.checked = checked; });
+  updateSelCount();
+}
+async function bulkDelete() {
+  const ids = getSelectedIds();
+  if (!ids.length) { alert(t('el-184')); return; }
+  if (!confirm(t('el-182', { n: ids.length }))) return;
+  let ok = 0, fail = 0;
+  for (const id of ids) {
+    try { const r = await fetch('/api/memories/' + encodeURIComponent(id), { method: 'DELETE' }); if (r.ok) ok++; else fail++; } catch (e) { fail++; }
+  }
+  showMsg('#data-msg', t('el-183', { n: ok }) + (fail ? '（失败 ' + fail + '）' : ''), fail ? 'err' : 'ok');
+  if (ok) runSearch();
+}
+async function bulkPin() {
+  const ids = getSelectedIds();
+  if (!ids.length) { alert(t('el-184')); return; }
+  let ok = 0, fail = 0;
+  for (const id of ids) {
+    try { const r = await fetch('/api/memories/pin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); if (r.ok) ok++; else fail++; } catch (e) { fail++; }
+  }
+  showMsg('#data-msg', t('el-183', { n: ok }) + (fail ? '（失败 ' + fail + '）' : ''), fail ? 'err' : 'ok');
+  if (ok) runSearch();
+}
+async function bulkExport() {
+  const ids = getSelectedIds();
+  if (!ids.length) { alert(t('el-184')); return; }
+  const items = [];
+  for (const id of ids) {
+    try { const r = await fetch('/api/memories/' + encodeURIComponent(id)); if (r.ok) { const j = await r.json(); items.push(j); } } catch (e) {}
+  }
+  if (!items.length) { showMsg('#data-msg', t('msg-load-fail'), 'err'); return; }
+  const blob = new Blob([JSON.stringify(items, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'memories_export_' + ids.length + '.json'; a.click();
+  URL.revokeObjectURL(a.href);
+  showMsg('#data-msg', t('el-185', { n: items.length }), 'ok');
 }
 
 async function loadConfig() {
@@ -1086,7 +1156,44 @@ async function loadConfig() {
   $('#c-extract-ver').value = c.extract_version || 'v2';
 }
 
+function validateConfig() {
+  const errors = [];
+  const val = id => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+  const isUrl = s => /^https?:\/\/.+/i.test(s);
+  // JSON 字段：fact_types / source_trust_weights / api_keys / kg_synonyms
+  [['c-fact-types', 'fact_types'], ['c-source-weights', 'source_trust_weights'], ['c-api-keys', 'api_keys'], ['c-kg-syn', 'kg_synonyms']].forEach(([id, name]) => {
+    const v = val(id);
+    if (v && v !== '******') { try { JSON.parse(v); } catch (e) { errors.push(t('el-186', { f: name })); } }
+  });
+  // URL 字段
+  [['c-qdrant-url', 'qdrant_url'], ['c-emb-url', 'embedding_url'], ['c-llm-url', 'llm_url'], ['c-kg-url', 'kg_url'], ['c-reranker-url', 'reranker_url']].forEach(([id, name]) => {
+    const v = val(id); if (v && !isUrl(v)) errors.push(t('el-187', { f: name }));
+  });
+  val('c-webhook-urls').split(',').map(s => s.trim()).filter(Boolean).forEach(u => { if (!isUrl(u)) errors.push(t('el-187', { f: 'webhook_urls' })); });
+  // 数值范围
+  const num = (id, min, max, name, intOk) => {
+    const v = val(id); if (v === '') return;
+    const n = intOk ? parseInt(v, 10) : Number(v);
+    if (isNaN(n) || n < min || n > max) errors.push(t('el-188', { f: name }));
+  };
+  num('c-dedup-th', 0.7, 1, 'dedup_threshold');
+  num('c-recency-hl', 1, 36500, 'recency_half_life', true);
+  num('c-expiry', 0, 36500, 'expiry_days', true);
+  num('c-mmr-lambda', 0, 1, 'mmr_lambda');
+  num('c-fact-conf', 0, 1, 'fact_confidence_threshold');
+  num('c-entity-boost', 0, 1, 'entity_link_boost');
+  num('c-min-chars', 1, 100000, 'capture_min_chars', true);
+  num('c-max-per', 1, 100000, 'capture_max_per_call', true);
+  num('c-session-ttl', 0, 87600, 'session_ttl_hours', true);
+  num('c-working-ttl', 0, 87600, 'working_ttl_hours', true);
+  num('c-webhook-timeout', 100, 600000, 'webhook_timeout_ms', true);
+  num('c-kg-max', 1, 100000, 'kg_max_entities', true);
+  return { ok: errors.length === 0, errors };
+}
+
 async function saveConfig() {
+  const vres = validateConfig();
+  if (!vres.ok) { showMsg('#cfg-msg', t('el-189') + ' ' + vres.errors.join('；'), 'err'); return; }
   const body = {
     qdrant_url: $('#c-qdrant-url').value.trim(), qdrant_collection: $('#c-qdrant-coll').value.trim() || 'memories',
     embedding_url: $('#c-emb-url').value, embedding_model: $('#c-emb-model').value,
@@ -1310,43 +1417,58 @@ async function showSource(id) {
 }
 function closeSrc() { $('#src-modal').classList.remove('show'); }
 
+let _docsCache = null;
 async function loadDocs() {
   const box = $('#docs');
-  const loc = getLocale();
   try {
     const r = await fetch('/api/docs'); const d = await r.json();
-    const toolRows = (d.tools || []).map(t => {
-      const params = Object.entries(t.inputSchema.properties || {}).map(([k, v]) => {
-        const req = (t.inputSchema.required || []).includes(k) ? ' <span style="color:var(--danger)">*</span>' : '';
-        const en = v.enum ? ' enum=' + JSON.stringify(v.enum) : '';
-        return '<li><code>' + esc(k) + '</code> (' + esc(v.type) + en + ')' + req + ((loc === 'zh' && v.zh) ? ' — ' + esc(v.zh) : (v.description ? ' — ' + esc(v.description) : '')) + '</li>';
-      }).join('');
-      return '<div style="margin-bottom:14px"><b>' + esc(t.name) + '</b> <span class="muted">' + esc((loc === 'zh' && t.zh) ? t.zh : (t.description || '')) + '</span>'
-        + '<ul style="margin:4px 0 0 18px;color:var(--muted);font-size:12.5px">' + (params || '<li class="muted" data-i18n="el-153">无参数</li>') + '</ul></div>';
-    }).join('');
-    const apiRows = (d.rest_api || []).map(a =>
-      '<tr><td><code>' + esc(a.method) + '</code></td><td><code>' + esc(a.path) + '</code></td><td>' + esc(a.desc) + '</td></tr>').join('');
-    const cfgRows = (d.config_fields || []).map(c =>
-      '<tr><td><code>' + esc(c.key) + '</code></td><td>' + esc(c.desc) + '</td></tr>').join('');
-    const modeRows = (d.search_modes || []).map(m =>
-      '<tr><td><code>' + esc(m.mode) + '</code></td><td>' + esc(m.desc) + '</td></tr>').join('');
-    const notes = (d.notes || []).map(n => '<li>' + esc(n) + '</li>').join('');
-    box.innerHTML =
-      '<h3 style="margin-top:0" data-i18n="el-154">AI Memory 使用帮助</h3>'
-      + '<p class="muted" data-i18n="el-155">服务版本 v' + esc(d.server_version || '?') + '</p>'
-      + '<p>' + esc(d.overview || '') + '</p>'
-      + '<p class="muted"><b data-i18n="el-156">传输方式：</b>' + esc(d.transport || '') + '</p>'
-      + '<h3 data-i18n="el-157">MCP 工具接口</h3><div>' + toolRows + '</div>'
-      + '<h3 data-i18n="el-158">REST API（供本管理界面/脚本调用）</h3>'
-      + '<table><thead><tr><th data-i18n="el-159">方法</th><th data-i18n="el-160">路径</th><th data-i18n="el-167">说明</th></tr></thead><tbody>' + apiRows + '</tbody></table>'
-      + '<h3 data-i18n="el-162">配置项说明</h3>'
-      + '<table><thead><tr><th data-i18n="el-163">字段</th><th data-i18n="el-164">说明</th></tr></thead><tbody>' + cfgRows + '</tbody></table>'
-      + '<h3 data-i18n="el-165">检索模式</h3>'
-      + '<table><thead><tr><th data-i18n="el-166">模式</th><th data-i18n="el-161">说明</th></tr></thead><tbody>' + modeRows + '</tbody></table>'
-      + '<h3 data-i18n="el-168">部署架构</h3><p class="muted">' + esc(d.architecture || '') + '</p>'
-      + '<h3 data-i18n="el-169">注意事项</h3><ul style="color:var(--muted);font-size:12.5px">' + notes + '</ul>';
-  applyLang();
+    _docsCache = d;
+    renderDocs('');
   } catch (e) { box.innerHTML = t('msg-help-fail') + ': ' + esc(e.message); }
+}
+function renderDocs(filter) {
+  const box = $('#docs');
+  const d = _docsCache;
+  const loc = getLocale();
+  if (!d) { box.innerHTML = t('msg-loading') || '加载中…'; return; }
+  const f = (filter || '').trim().toLowerCase();
+  const match = (s) => !f || String(s || '').toLowerCase().includes(f);
+  const toolRows = (d.tools || []).filter(t => match(t.name) || match(t.description) || match(t.zh)).map(t => {
+    const params = Object.entries(t.inputSchema.properties || {}).map(([k, v]) => {
+      const req = (t.inputSchema.required || []).includes(k) ? ' <span style="color:var(--danger)">*</span>' : '';
+      const en = v.enum ? ' enum=' + JSON.stringify(v.enum) : '';
+      return '<li><code>' + esc(k) + '</code> (' + esc(v.type) + en + ')' + req + ((loc === 'zh' && v.zh) ? ' — ' + esc(v.zh) : (v.description ? ' — ' + esc(v.description) : '')) + '</li>';
+    }).join('');
+    return '<div style="margin-bottom:14px"><b>' + esc(t.name) + '</b> <span class="muted">' + esc((loc === 'zh' && t.zh) ? t.zh : (t.description || '')) + '</span>'
+      + '<ul style="margin:4px 0 0 18px;color:var(--muted);font-size:12.5px">' + (params || '<li class="muted" data-i18n="el-153">无参数</li>') + '</ul></div>';
+  }).join('');
+  const apiRows = (d.rest_api || []).filter(a => match(a.method) || match(a.path) || match(a.desc)).map(a =>
+    '<tr><td><code>' + esc(a.method) + '</code></td><td><code>' + esc(a.path) + '</code></td><td>' + esc(a.desc) + '</td></tr>').join('');
+  const cfgRows = (d.config_fields || []).filter(c => match(c.key) || match(c.desc)).map(c =>
+    '<tr><td><code>' + esc(c.key) + '</code></td><td>' + esc(c.desc) + '</td></tr>').join('');
+  const modeRows = (d.search_modes || []).filter(m => match(m.mode) || match(m.desc)).map(m =>
+    '<tr><td><code>' + esc(m.mode) + '</code></td><td>' + esc(m.desc) + '</td></tr>').join('');
+  const notes = (d.notes || []).filter(n => match(n)).map(n => '<li>' + esc(n) + '</li>').join('');
+  const curlRows = (d.curl_examples || []).filter(c => match(c.title) || match(c.cmd)).map(c =>
+    '<div style="margin-bottom:10px"><b>' + esc(c.title) + '</b><pre style="background:var(--input-bg);color:var(--text);padding:8px 10px;border-radius:6px;overflow:auto;font-size:12px;white-space:pre-wrap;word-break:break-all">' + esc(c.cmd) + '</pre></div>').join('');
+  let html =
+    '<h3 style="margin-top:0" data-i18n="el-154">AI Memory 使用帮助</h3>'
+    + '<p class="muted" data-i18n="el-155">服务版本 v' + esc(d.server_version || '?') + '</p>'
+    + '<p>' + esc(d.overview || '') + '</p>'
+    + '<p class="muted"><b data-i18n="el-156">传输方式：</b>' + esc(d.transport || '') + '</p>';
+  if (curlRows) html += '<h3 data-i18n="el-175">curl 调用示例</h3>' + curlRows;
+  html += '<h3 data-i18n="el-157">MCP 工具接口</h3><div>' + (toolRows || '<p class="muted">无匹配</p>') + '</div>'
+    + '<h3 data-i18n="el-158">REST API（供本管理界面/脚本调用）</h3>'
+    + '<table><thead><tr><th data-i18n="el-159">方法</th><th data-i18n="el-160">路径</th><th data-i18n="el-167">说明</th></tr></thead><tbody>' + (apiRows || '<tr><td colspan="3" class="muted">无匹配</td></tr>') + '</tbody></table>'
+    + '<h3 data-i18n="el-162">配置项说明</h3>'
+    + '<table><thead><tr><th data-i18n="el-163">字段</th><th data-i18n="el-164">说明</th></tr></thead><tbody>' + (cfgRows || '<tr><td colspan="2" class="muted">无匹配</td></tr>') + '</tbody></table>'
+    + '<h3 data-i18n="el-165">检索模式</h3>'
+    + '<table><thead><tr><th data-i18n="el-166">模式</th><th data-i18n="el-161">说明</th></tr></thead><tbody>' + (modeRows || '<tr><td colspan="2" class="muted">无匹配</td></tr>') + '</tbody></table>';
+  if (d.forgetting_curve_note) html += '<h3 data-i18n="el-176">遗忘曲线说明</h3><p class="muted">' + esc(d.forgetting_curve_note) + '</p>';
+  html += '<h3 data-i18n="el-168">部署架构</h3><p class="muted">' + esc(d.architecture || '') + '</p>'
+    + '<h3 data-i18n="el-169">注意事项</h3><ul style="color:var(--muted);font-size:12.5px">' + (notes || '<li class="muted">无匹配</li>') + '</ul>';
+  box.innerHTML = html;
+  applyLang();
 }
 
 // ---- 知识图谱（原生力导向，无外部依赖） ----

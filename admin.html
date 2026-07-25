@@ -637,8 +637,19 @@ function t(key) {
 function applyLang() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.dataset.i18n;
-    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') { el.placeholder = t(key) || el.placeholder; }
-    else { el.textContent = t(key) || el.textContent; }
+    const val = t(key);
+    if (!val) return;
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') { el.placeholder = val; }
+    else if (el.children.length === 0) { el.textContent = val; }
+    else {
+      // 有子元素时，只替换第一个文本节点（保留子元素如 <span>）
+      for (let i = 0; i < el.childNodes.length; i++) {
+        if (el.childNodes[i].nodeType === 3) { // TEXT_NODE
+          el.childNodes[i].textContent = val;
+          break;
+        }
+      }
+    }
   });
   $('#lang-btn').textContent = t('lang-btn');
   $('#header-title').textContent = t('hdr-title');

@@ -125,6 +125,11 @@ ssh root@192.168.110.128 'systemctl stop ai-memory && rm -rf /opt/ai-memory && t
 - **标签聚类** `GET /api/tags/cluster`：标签频率 + 共现关系，用并查集（共现 ≥2）归并出主题簇。
 - **遗忘曲线** `GET /api/learning/forgetting-curve`：基于间隔重复稳定性（SM-2 风格间隔 `2^访问次数·2h`，封顶 720h）预测不复习时的记忆留存衰减（未来 30 天），并给出待复习 / 已排期分布。遗留记忆缺 `next_review_at` 时按访问次数派生稳定性，曲线仍可呈现。
 
+### 2.9 管理界面增强（英文双语 / 深浅主题 / 响应式）
+- **英文模式彻底双语**：所有 JS 动态中文串、静态 inline 标签、select option 全部走 `t()` i18n（zh+en 双词典）；切换语言时动态渲染内容（帮助页工具描述、表格、弹窗等）会重拉或重翻，保证中英文都完整。
+- **深浅主题切换 + 响应式**：CSS 抽成 `:root`（深色默认）+ `[data-theme="light"]`（浅色）双调色板，右上角按钮切换并 localStorage 持久化；`@media` 响应式适配窄屏（头部换行、工具栏/行纵向堆叠、表格横向滚动）。
+- **使用帮助页**：「使用帮助」Tab 实时拉取 `/api/docs`，渲染 MCP 工具清单（含参数 / 必填 / 枚举 / 中英文描述）、REST API 表、配置项说明（28 项）、检索模式、部署架构与注意事项，内容随服务端版本自动对齐。
+
 ---
 
 ## 三、系统架构
@@ -372,7 +377,13 @@ curl -X PUT http://localhost:6333/collections/memories -H 'Content-Type: applica
 
 ## 十一、版本
 
-- **v1.14.0**（当前版本）：代码清理 + 全面错误可观测 + 性能优化。
+- **v1.15.2**（当前版本）：修复「使用帮助」在中文环境下无法加载。根因为帮助容器 `#docs` 自身误挂 `data-i18n="el-93"`，而 `el-93` 仅英文词典有；`MutationObserver` 触发的 `applyLang` 在中文下把刚写入的帮助内容回写为初始占位。移除该 `data-i18n` 后修复（用 jsdom 真机复现确认）。
+
+- **v1.15.1**：修复管理界面整页未上色——`:root` 与 `[data-theme="light"]` 原为 `--x:var(--x)` 自引用占位、无真实颜色值，导致主题切换无效、帮助文字不可见；填入深浅双调色板并将帮助渲染硬编码色改为 CSS 变量；`/api/docs` 的 `config_fields` 由 3 条补全至 28 条，对齐 `POST /api/config` 实际可配项。
+
+- **v1.15.0**：三大增强（Batch D）。① **英文双语**（T7）：全站 i18n；② **主题切换 + 响应式**（T8）：深浅双调色板 + `@media`；③ **智能深化**（T9）：新增 `lib/insight.js`（重复检测 / 标签聚类 / 遗忘曲线）+ 三个只读端点 `GET /api/memories/duplicates`、`GET /api/tags/cluster`、`GET /api/learning/forgetting-curve`，质量监控页加可视化卡片。
+
+- **v1.14.0**：代码清理 + 全面错误可观测 + 性能优化。
   - **② 错误全覆盖**：`errStats` 从 `backend.js` 移至 `config.js`（全模块共享），剩余 54 处 `catch(e){}` 全部接入计数，`/api/health` 的 `err_stats` 含 11 个分类（embed/fts/kg/webhook/bump/changelog/cleanup/capture/backup/config/other）。
   - **① 遗留文件清理**：删除 `test_full.js`、`test_deep.js`、`eval/` 目录、`deploy.sh`、`DEPLOY_REPORT_*.md`、`FEATURE_INTERACTION_REVIEW.md`。
   - **③ 版本号升为 1.14.0**，admin 标题动态显示版本。

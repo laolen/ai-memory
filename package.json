@@ -12,7 +12,9 @@
     "test:full": "BASE=http://192.168.110.128:8765 node test/run.js"
   },
   "dependencies": {
+    "@fastify/cors": "^11.3.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "better-sqlite3": "^12.11.1"
+    "better-sqlite3": "^12.11.1",
+    "fastify": "^5.10.0"
   }
 }

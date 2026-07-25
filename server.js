@@ -27,3 +27,7 @@ const rest = require('./lib/rest');
 
 // 3) 启动服务
 rest.startServer();
+
+// 4) 优雅关闭：systemctl restart / Ctrl+C / 信号终止
+process.on('SIGTERM', () => { rest.shutdown('SIGTERM'); });
+process.on('SIGINT', () => { rest.shutdown('SIGINT'); });

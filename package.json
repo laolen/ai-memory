@@ -1,11 +1,14 @@
 {
   "name": "ai-memory",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "private": true,
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "verify": "node test/run.js"
+    "deploy": "node deploy.js",
+    "verify": "node test/run.js",
+    "test:unit": "node test/unit.js",
+    "test:full": "BASE=http://192.168.110.128:8765 node test/run.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

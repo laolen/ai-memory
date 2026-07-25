@@ -47,7 +47,8 @@ async function main() {
 
   // 4) 远端解压 + 语法全检 + 删死代码
   console.log('--- 4/7 解压 + 语法检查 ---');
-  run(`"${NODEEXE}" "${SSHPATH}" run "cd /opt/ai-memory && tar xzf /tmp/ai-memory-deploy-${TS}.tar.gz && rm -f /tmp/ai-memory-deploy-${TS}.tar.gz && node --check server.js && FILES=\\"\\$(ls lib/*.js)\\" && for f in \\$FILES; do node --check \\"\\$f\\" || exit 1; done && rm -f verify_v113.js test_full.js test_deep.js && echo DEPLOY_OK"`);
+  // 注意：JS 模板字面量中 $FILES 和 $f 无 { 则不触发插值，是纯字面量
+  run(`"${NODEEXE}" "${SSHPATH}" run "cd /opt/ai-memory && tar xzf /tmp/ai-memory-deploy-${TS}.tar.gz && rm -f /tmp/ai-memory-deploy-${TS}.tar.gz && node --check server.js && for f in lib/*.js; do node --check \"$f\" || exit 1; done && rm -f verify_v113.js test_full.js test_deep.js && echo DEPLOY_OK"`);
 
   // 5) 重启
   console.log('--- 5/7 重启服务 ---');

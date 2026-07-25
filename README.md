@@ -236,6 +236,18 @@ ssh root@192.168.110.128 'cd /opt/ai-memory && node --check server.js && for f i
 ssh root@192.168.110.128 'systemctl stop ai-memory && rm -rf /opt/ai-memory && tar xzf /opt/ai-memory-backup-<时间戳>.tar.gz -C /opt && systemctl start ai-memory'
 ```
 
+### 方式三：Docker Compose
+```bash
+docker compose up -d
+```
+启动后 Qdrant 监听 `:6333`，ai-memory 监听 `:8765`（管理界面 `http://localhost:8765/admin`）。
+需先建 Qdrant collection：
+```bash
+curl -X PUT http://localhost:6333/collections/memories -H 'Content-Type: application/json' -d '{"vectors":{"size":1024,"distance":"Cosine","on_disk":true},"quantization_config":{"scalar":{"type":"int8"}},"hnsw_config":{"m":8}}'
+```
+嵌入和 LLM 端点通过环境变量配置（默认指向 `host.docker.internal` 的 Ollama/嵌入服务）。
+单构建 ai-memory 镜像：`docker build -t ai-memory .`。
+
 ---
 
 ## 九、配置项详解（`config.json`）

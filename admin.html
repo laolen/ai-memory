@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>AI Memory 管理界面</title>
+<title data-i18n="el-1">AI Memory 管理界面</title>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
@@ -67,7 +67,7 @@
 </head>
 <body>
 <header>
-  <h1 id="header-title">AI Memory 管理界面</h1>
+  <h1 id="header-title" data-i18n="el-2">AI Memory 管理界面</h1>
   <div class="status">
     <span id="st-qdrant"><span class="dot bad"></span>Qdrant 未连接</span>
     <span id="st-emb"><span class="dot warn"></span>向量未启用</span>
@@ -89,23 +89,23 @@
 <!-- 数据管理 -->
 <div class="pane active" id="pane-data">
   <div class="toolbar">
-    <div><label>搜索内容 (留空=列出全部)</label><input id="q" placeholder="例如：会议记录" /></div>
-    <div style="flex:0 0 140px"><label>检索模式</label>
+    <div><label data-i18n="el-3">搜索内容 (留空=列出全部)</label><input id="q" placeholder="例如：会议记录" /></div>
+    <div style="flex:0 0 140px"><label data-i18n="el-4">检索模式</label>
       <select id="mode"><option value="keyword">关键词</option><option value="semantic">语义</option><option value="hybrid">混合</option></select></div>
-    <div style="flex:0 0 100px"><label>数量</label><input id="limit" type="number" value="50" /></div>
-    <div style="flex:0 0 150px"><label>起始时间 (from)</label><input id="from" type="date" /></div>
-    <div style="flex:0 0 150px"><label>结束时间 (to)</label><input id="to" type="date" /></div>
-    <div style="flex:0 0 160px"><label>事实类型 (type)</label><input id="ftype" placeholder="如 preference（留空=全部）" /></div>
-    <div style="flex:0 0 130px"><label>最低置信度</label><input id="fconf" type="number" step="0.05" min="0" max="1" placeholder="0-1" /></div>
-    <div style="flex:0 0 160px"><label>分类 (category)</label><select id="fcat"><option value="">全部</option><option value="semantic">semantic</option><option value="episodic">episodic</option><option value="procedural">procedural</option></select></div>
-    <div style="flex:0 0 170px"><label>记忆类型 (memory_type)</label><select id="fmem"><option value="">全部</option><option value="user">user（用户画像）</option><option value="agent">agent（Agent 自身）</option><option value="session">session（会话临时）</option></select></div>
-    <div style="flex:0 0 150px"><label>项目 (留空=全部)</label><input id="fproj" placeholder="如 payment" /></div>
+    <div style="flex:0 0 100px"><label data-i18n="el-5">数量</label><input id="limit" type="number" value="50" /></div>
+    <div style="flex:0 0 150px"><label data-i18n="el-6">起始时间 (from)</label><input id="from" type="date" /></div>
+    <div style="flex:0 0 150px"><label data-i18n="el-7">结束时间 (to)</label><input id="to" type="date" /></div>
+    <div style="flex:0 0 160px"><label data-i18n="el-8">事实类型 (type)</label><input id="ftype" placeholder="如 preference（留空=全部）" /></div>
+    <div style="flex:0 0 130px"><label data-i18n="el-9">最低置信度</label><input id="fconf" type="number" step="0.05" min="0" max="1" placeholder="0-1" /></div>
+    <div style="flex:0 0 160px"><label data-i18n="el-10">分类 (category)</label><select id="fcat"><option value="">全部</option><option value="semantic">semantic</option><option value="episodic">episodic</option><option value="procedural">procedural</option></select></div>
+    <div style="flex:0 0 170px"><label data-i18n="el-11">记忆类型 (memory_type)</label><select id="fmem"><option value="">全部</option><option value="user">user（用户画像）</option><option value="agent">agent（Agent 自身）</option><option value="session">session（会话临时）</option></select></div>
+    <div style="flex:0 0 150px"><label data-i18n="el-12">项目 (留空=全部)</label><input id="fproj" placeholder="如 payment" /></div>
     <div style="flex:0 0 auto"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#8b949e"><input type="checkbox" id="frel" checked style="width:auto;margin:0" />包含关联项目</label></div>
-    <div style="flex:0 0 auto"><button onclick="runSearch()">搜索</button></div>
+    <div style="flex:0 0 auto"><button onclick="runSearch()" data-i18n="el-13">搜索</button></div>
   </div>
   <div id="data-msg"></div>
   <table id="tbl">
-    <thead><tr><th>内容</th><th>项目</th><th>会话</th><th>标签</th><th>类型</th><th>分类</th><th>记忆类型</th><th>创建</th><th>更新</th><th>最近访问</th><th>历史</th><th>溯源</th><th>分</th><th>显著性</th><th>纠正</th><th></th></tr></thead>
+    <thead><tr><th data-i18n="el-14">内容</th><th data-i18n="el-15">项目</th><th data-i18n="el-16">会话</th><th data-i18n="el-17">标签</th><th data-i18n="el-18">类型</th><th data-i18n="el-19">分类</th><th data-i18n="el-20">记忆类型</th><th data-i18n="el-21">创建</th><th data-i18n="el-22">更新</th><th data-i18n="el-23">最近访问</th><th data-i18n="el-24">历史</th><th data-i18n="el-25">溯源</th><th>分</th><th data-i18n="el-26">显著性</th><th data-i18n="el-27">纠正</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
 </div>
@@ -113,79 +113,79 @@
 <!-- 项目关系 -->
 <div class="pane" id="pane-links">
   <div class="card">
-    <h3 style="margin-top:0">项目间强弱关联</h3>
-    <p class="muted" style="margin:4px 0">建立项目关联后,检索/列出某项目记忆时会同时借鉴其关联项目的记忆(按强度衰减排序)。关联双向生效。</p>
+    <h3 style="margin-top:0" data-i18n="el-28">项目间强弱关联</h3>
+    <p class="muted" style="margin:4px 0" data-i18n="el-29">建立项目关联后,检索/列出某项目记忆时会同时借鉴其关联项目的记忆(按强度衰减排序)。关联双向生效。</p>
     <div class="row">
-      <div><label>源项目 (from)</label><input id="lk-from" placeholder="如 payment" /></div>
-      <div><label>目标项目 (to)</label><input id="lk-to" placeholder="如 order" /></div>
+      <div><label data-i18n="el-30">源项目 (from)</label><input id="lk-from" placeholder="如 payment" /></div>
+      <div><label data-i18n="el-31">目标项目 (to)</label><input id="lk-to" placeholder="如 order" /></div>
     </div>
     <div class="row">
-      <div><label>关联强度</label>
+      <div><label data-i18n="el-32">关联强度</label>
         <select id="lk-strength"><option value="1">强 (1.0)</option><option value="0.6" selected>中 (0.6)</option><option value="0.3">弱 (0.3)</option></select>
       </div>
-      <div><label>备注</label><input id="lk-note" placeholder="如 同属支付域" /></div>
+      <div><label data-i18n="el-33">备注</label><input id="lk-note" placeholder="如 同属支付域" /></div>
     </div>
-    <button onclick="addLink()">添加 / 更新关联</button>
+    <button onclick="addLink()" data-i18n="el-34">添加 / 更新关联</button>
     <div id="lk-msg" class="msg"></div>
-    <h3 style="margin-top:18px">已有关联</h3>
-    <table id="lk-tbl"><thead><tr><th>源项目</th><th>目标项目</th><th>强度</th><th>备注</th><th></th></tr></thead><tbody></tbody></table>
+    <h3 style="margin-top:18px" data-i18n="el-35">已有关联</h3>
+    <table id="lk-tbl"><thead><tr><th data-i18n="el-36">源项目</th><th data-i18n="el-37">目标项目</th><th data-i18n="el-38">强度</th><th data-i18n="el-39">备注</th><th></th></tr></thead><tbody></tbody></table>
   </div>
 </div>
 
 <!-- 配置 -->
 <div class="pane" id="pane-config">
   <div class="card">
-    <h3 style="margin-top:0">向量数据库 (Qdrant)</h3>
-    <p class="muted" style="margin:4px 0">Qdrant 无需用户名 / 密码（内网部署默认无鉴权；若日后启用 API Key 再补字段）。</p>
+    <h3 style="margin-top:0" data-i18n="el-40">向量数据库 (Qdrant)</h3>
+    <p class="muted" style="margin:4px 0" data-i18n="el-41">Qdrant 无需用户名 / 密码（内网部署默认无鉴权；若日后启用 API Key 再补字段）。</p>
     <div class="row">
       <div><label data-i18n="lbl-qdrant-url">Qdrant 地址</label><input id="c-qdrant-url" placeholder="http://192.168.110.248:6333" /></div>
-      <div><label>集合名 (collection)</label><input id="c-qdrant-coll" placeholder="memories" /></div>
+      <div><label data-i18n="el-42">集合名 (collection)</label><input id="c-qdrant-coll" placeholder="memories" /></div>
     </div>
     <div style="margin-top:8px"><button class="ghost" onclick="testBackend('db')" data-i18n="btn-test-db">测试 Qdrant 连接</button><span id="t-db" class="test-msg"></span></div>
-    <h3>模型 API (嵌入/向量)</h3>
-    <p class="muted" style="margin:4px 0">嵌入支持本地（Ollama/llama-embed，API Key 留空）或云端（OpenAI 兼容 /v1/embeddings，填对应 Key）。</p>
+    <h3 data-i18n="el-43">模型 API (嵌入/向量)</h3>
+    <p class="muted" style="margin:4px 0" data-i18n="el-44">嵌入支持本地（Ollama/llama-embed，API Key 留空）或云端（OpenAI 兼容 /v1/embeddings，填对应 Key）。</p>
     <div class="row">
-      <div><label>Embedding 接口 URL</label><input id="c-emb-url" placeholder="http://127.0.0.1:11434/api/embed 或 https://api.openai.com/v1/embeddings" /></div>
-      <div><label>模型名</label><input id="c-emb-model" placeholder="nomic-embed-text 或 text-embedding-3-small" /></div>
+      <div><label data-i18n="el-45">Embedding 接口 URL</label><input id="c-emb-url" placeholder="http://127.0.0.1:11434/api/embed 或 https://api.openai.com/v1/embeddings" /></div>
+      <div><label data-i18n="el-46">模型名</label><input id="c-emb-model" placeholder="nomic-embed-text 或 text-embedding-3-small" /></div>
     </div>
-    <div><label>API Key（云端才填，本地留空）</label><input id="c-emb-key" type="password" placeholder="云端 Embedding 的 Bearer Token；本地 Ollama 留空" /></div>
+    <div><label data-i18n="el-57">API Key（云端才填，本地留空）</label><input id="c-emb-key" type="password" placeholder="云端 Embedding 的 Bearer Token；本地 Ollama 留空" /></div>
     <div style="margin-top:8px"><button class="ghost" onclick="testBackend('embedding')" data-i18n="btn-test-emb">测试嵌入模型</button><span id="t-embedding" class="test-msg"></span></div>
-    <h3>记忆去重 / 合并</h3>
+    <h3 data-i18n="el-48">记忆去重 / 合并</h3>
     <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:12px 0 4px">
       <input type="checkbox" id="c-dedup" style="width:auto" /> 启用记忆合并（相似内容自动合并，避免重复）
     </label>
-    <div style="max-width:200px"><label>合并相似度阈值 (0.7~1.0)</label><input id="c-dedup-th" type="number" step="0.01" min="0.7" max="1.0" value="0.92" /></div>
-    <h3>时序感知</h3>
+    <div style="max-width:200px"><label data-i18n="el-49">合并相似度阈值 (0.7~1.0)</label><input id="c-dedup-th" type="number" step="0.01" min="0.7" max="1.0" value="0.92" /></div>
+    <h3 data-i18n="el-50">时序感知</h3>
     <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:12px 0 4px">
       <input type="checkbox" id="c-recency" style="width:auto" /> 启用检索时效加权（越近的记忆得分越高）
     </label>
-    <div style="max-width:200px"><label>时效半衰期 (天)</label><input id="c-recency-hl" type="number" step="1" min="1" value="30" /></div>
-    <div style="max-width:200px"><label>记忆过期天数 (0=不过期)</label><input id="c-expiry" type="number" step="1" min="0" value="0" /></div>
-    <div style="max-width:240px"><label>生命周期策略</label>
+    <div style="max-width:200px"><label data-i18n="el-51">时效半衰期 (天)</label><input id="c-recency-hl" type="number" step="1" min="1" value="30" /></div>
+    <div style="max-width:200px"><label data-i18n="el-52">记忆过期天数 (0=不过期)</label><input id="c-expiry" type="number" step="1" min="0" value="0" /></div>
+    <div style="max-width:240px"><label data-i18n="el-53">生命周期策略</label>
       <select id="c-lifecycle"><option value="none">none（不自动过期）</option><option value="expire">expire（到期清理）</option></select></div>
-    <h3>自动捕获</h3>
-    <p class="muted" style="margin:4px 0">把原始对话/文本自动提炼成记忆。配 LLM 走智能提取，否则启发式按句切分去重入库。所有捕获项打 auto-captured 标签。</p>
+    <h3 data-i18n="el-54">自动捕获</h3>
+    <p class="muted" style="margin:4px 0" data-i18n="el-55">把原始对话/文本自动提炼成记忆。配 LLM 走智能提取，否则启发式按句切分去重入库。所有捕获项打 auto-captured 标签。</p>
     <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:8px 0 4px">
       <input type="checkbox" id="c-llm" style="width:auto" /> 启用 LLM 智能提取（需填写下方 chat 端点）
     </label>
-    <p class="muted" style="margin:8px 0 4px">捕获 LLM 支持本地（Ollama，Key 留空）或云端（DeepSeek/OpenAI/硅基流动，填端点 + Key）。</p>
+    <p class="muted" style="margin:8px 0 4px" data-i18n="el-56">捕获 LLM 支持本地（Ollama，Key 留空）或云端（DeepSeek/OpenAI/硅基流动，填端点 + Key）。</p>
     <div class="row">
       <div><label data-i18n="lbl-llm-url">LLM 端点 (OpenAI 兼容 /v1/chat/completions)</label><input id="c-llm-url" placeholder="http://127.0.0.1:11434/v1/chat/completions 或 https://api.deepseek.com/v1/chat/completions" /></div>
       <div><label data-i18n="lbl-llm-model">LLM 模型名</label><input id="c-llm-model" placeholder="minicpm5-1b 或云端模型 id" /></div>
     </div>
-    <div><label>API Key（云端才填，本地留空）</label><input id="c-llm-key" type="password" placeholder="云端 chat 的 Bearer Token；本地 Ollama 留空" /></div>
+    <div><label data-i18n="el-47">API Key（云端才填，本地留空）</label><input id="c-llm-key" type="password" placeholder="云端 chat 的 Bearer Token；本地 Ollama 留空" /></div>
     <div style="margin-top:8px"><button class="ghost" onclick="testBackend('llm')" data-i18n="btn-test-llm">测试捕获 LLM</button><span id="t-llm" class="test-msg"></span></div>
     <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:12px 0 4px">
       <input type="checkbox" id="c-watch" style="width:auto" /> 启用文件/目录监听（tail 新增内容自动捕获）
     </label>
-    <div><label>监听路径（文件或目录，.log/.txt/.md/.jsonl）</label><input id="c-watch-path" placeholder="/var/log/app.log 或 /data/transcripts" /></div>
+    <div><label data-i18n="el-58">监听路径（文件或目录，.log/.txt/.md/.jsonl）</label><input id="c-watch-path" placeholder="/var/log/app.log 或 /data/transcripts" /></div>
     <div class="row">
-      <div style="max-width:220px"><label>启发式单条最小字符数</label><input id="c-min-chars" type="number" step="1" min="1" value="20" /></div>
-      <div style="max-width:220px"><label>单次最多入库条数</label><input id="c-max-per" type="number" step="1" min="1" value="20" /></div>
+      <div style="max-width:220px"><label data-i18n="el-59">启发式单条最小字符数</label><input id="c-min-chars" type="number" step="1" min="1" value="20" /></div>
+      <div style="max-width:220px"><label data-i18n="el-60">单次最多入库条数</label><input id="c-max-per" type="number" step="1" min="1" value="20" /></div>
     </div>
-    <div><label>关键词/正则白名单（留空=全部捕获）</label><input id="c-kw" placeholder="例如：决定|记住|偏好|规范" /></div>
+    <div><label data-i18n="el-61">关键词/正则白名单（留空=全部捕获）</label><input id="c-kw" placeholder="例如：决定|记住|偏好|规范" /></div>
     <div style="border:1px solid #1f4f6f;border-radius:8px;padding:10px;margin:10px 0;background:#0d1b26">
-      <div style="font-weight:600;color:#58a6ff;margin-bottom:6px">事实抽取管线 (v1.4.0)</div>
+      <div style="font-weight:600;color:#58a6ff;margin-bottom:6px" data-i18n="el-62">事实抽取管线 (v1.4.0)</div>
       <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:6px 0">
         <input type="checkbox" id="c-reconcile" style="width:auto" /> 启用冲突检测与合并（相似记忆让 LLM 判 相同/矛盾/补充，避免重复堆砌）
       </label>
@@ -193,15 +193,15 @@
         <input type="checkbox" id="c-auto-filter" style="width:auto" /> 捕获前触发判定（先让 LLM 判断是否值得记，省 token）
       </label>
       <div class="row">
-        <div style="max-width:360px"><label>事实类型本体 (JSON 数组)</label><input id="c-fact-types" placeholder='["preference","decision","convention","project_fact","anti_pattern","person","tooling","temporal"]' /></div>
-        <div style="max-width:200px"><label>最低置信度 (0-1)</label><input id="c-fact-conf" type="number" step="0.05" min="0" max="1" value="0.5" /></div>
+        <div style="max-width:360px"><label data-i18n="el-63">事实类型本体 (JSON 数组)</label><input id="c-fact-types" placeholder='["preference","decision","convention","project_fact","anti_pattern","person","tooling","temporal"]' /></div>
+        <div style="max-width:200px"><label data-i18n="el-64">最低置信度 (0-1)</label><input id="c-fact-conf" type="number" step="0.05" min="0" max="1" value="0.5" /></div>
       </div>
     </div>
     <div style="border:1px solid #1f4f6f;border-radius:8px;padding:10px;margin:10px 0;background:#0d1b26">
-      <div style="font-weight:600;color:#58a6ff;margin-bottom:6px">记忆分层与治理 (v1.5.0)</div>
+      <div style="font-weight:600;color:#58a6ff;margin-bottom:6px" data-i18n="el-65">记忆分层与治理 (v1.5.0)</div>
       <div class="row">
-        <div style="max-width:220px"><label>实体链接加权 (0-1)</label><input id="c-entity-boost" type="number" step="0.05" min="0" max="1" value="0.15" /></div>
-        <div style="max-width:220px"><label>Session 过期小时 (0=关)</label><input id="c-session-ttl" type="number" step="1" min="0" value="0" /></div>
+        <div style="max-width:220px"><label data-i18n="el-66">实体链接加权 (0-1)</label><input id="c-entity-boost" type="number" step="0.05" min="0" max="1" value="0.15" /></div>
+        <div style="max-width:220px"><label data-i18n="el-67">Session 过期小时 (0=关)</label><input id="c-session-ttl" type="number" step="1" min="0" value="0" /></div>
       </div>
       <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:6px 0">
         <input type="checkbox" id="c-source-trust" style="width:auto" /> 来源信任加权（human&gt;agent&gt;tool&gt;system，检索时排序）
@@ -209,24 +209,24 @@
       <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:6px 0">
         <input type="checkbox" id="c-preserve-conflict" style="width:auto" /> 时序 ADD-only（冲突事实不覆盖旧值，新建并保留演变轨迹）
       </label>
-      <div style="max-width:420px"><label>来源信任权重 (JSON)</label><input id="c-source-weights" placeholder='{"human":1.0,"agent":0.85,"tool":0.7,"system":0.6}' /></div>
+      <div style="max-width:420px"><label data-i18n="el-68">来源信任权重 (JSON)</label><input id="c-source-weights" placeholder='{"human":1.0,"agent":0.85,"tool":0.7,"system":0.6}' /></div>
     </div>
-    <h3>知识图谱</h3>
-    <p class="muted" style="margin:4px 0">写入/编辑记忆时用 LLM 抽取实体与关系，存入 entities/relations，可在「知识图谱」页浏览。无 LLM 时不抽取。抽取质量取决于模型，minicpm5-1b 对嵌套图 schema 不稳定，建议 kg_model 用更强模型。</p>
+    <h3 data-i18n="el-69">知识图谱</h3>
+    <p class="muted" style="margin:4px 0" data-i18n="el-70">写入/编辑记忆时用 LLM 抽取实体与关系，存入 entities/relations，可在「知识图谱」页浏览。无 LLM 时不抽取。抽取质量取决于模型，minicpm5-1b 对嵌套图 schema 不稳定，建议 kg_model 用更强模型。</p>
     <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:8px 0 4px">
       <input type="checkbox" id="c-kg" style="width:auto" /> 启用知识图谱（抽取实体与关系）
     </label>
-    <p class="muted" style="margin:8px 0 4px">图谱抽取可独立指向云端：填 kg_url + kg_api_key 即走云；留空则复用上面「自动捕获」的 LLM 端点（捕获与图谱可各自本地/云端）。</p>
+    <p class="muted" style="margin:8px 0 4px" data-i18n="el-71">图谱抽取可独立指向云端：填 kg_url + kg_api_key 即走云；留空则复用上面「自动捕获」的 LLM 端点（捕获与图谱可各自本地/云端）。</p>
     <div class="row">
-      <div><label>图谱抽取模型 (kg_model，留空=同 LLM 模型)</label><input id="c-kg-model" placeholder="minicpm5-1b（建议更强模型如 qwen3.5:9b 或云端 deepseek）" /></div>
-      <div style="max-width:220px"><label>单条最大实体数</label><input id="c-kg-max" type="number" step="1" min="1" value="30" /></div>
+      <div><label data-i18n="el-72">图谱抽取模型 (kg_model，留空=同 LLM 模型)</label><input id="c-kg-model" placeholder="minicpm5-1b（建议更强模型如 qwen3.5:9b 或云端 deepseek）" /></div>
+      <div style="max-width:220px"><label data-i18n="el-73">单条最大实体数</label><input id="c-kg-max" type="number" step="1" min="1" value="30" /></div>
     </div>
     <div class="row">
-      <div><label>图谱端点 kg_url（留空=复用捕获 LLM 端点）</label><input id="c-kg-url" placeholder="https://api.deepseek.com/v1/chat/completions（可选，独立云端）" /></div>
-      <div><label>图谱 API Key（留空=复用 LLM Key）</label><input id="c-kg-key" type="password" placeholder="可选；云端才填" /></div>
+      <div><label data-i18n="el-74">图谱端点 kg_url（留空=复用捕获 LLM 端点）</label><input id="c-kg-url" placeholder="https://api.deepseek.com/v1/chat/completions（可选，独立云端）" /></div>
+      <div><label data-i18n="el-75">图谱 API Key（留空=复用 LLM Key）</label><input id="c-kg-key" type="password" placeholder="可选；云端才填" /></div>
     </div>
     <div style="margin-top:8px"><button class="ghost" onclick="testBackend('kg')" data-i18n="btn-test-kg">测试图谱抽取</button><span id="t-kg" class="test-msg"></span></div>
-    <div><label>实体同义词归一表 (JSON，alias→canonical，留空无)</label><textarea id="c-kg-syn" placeholder='{"李工":"小李","Aurora 项目":"Aurora"}'></textarea></div>
+    <div><label data-i18n="el-76">实体同义词归一表 (JSON，alias→canonical，留空无)</label><textarea id="c-kg-syn" placeholder='{"李工":"小李","Aurora 项目":"Aurora"}'></textarea></div>
     <button onclick="saveConfig()" data-i18n="btn-save">保存并重启服务</button>
     <button class="ghost" onclick="diagnose()" data-i18n="btn-diagnose">测试连接</button>
     <div id="cfg-msg" class="msg"></div>
@@ -235,31 +235,31 @@
 
   <div class="card" style="margin-top:18px">
     <h3 style="margin-top:0" data-i18n="sect-advanced">高级配置（v1.14.0+）</h3>
-    <p class="muted" style="margin:4px 0">MMR 多样性、Webhook 推送、Reranker 精排、API 鉴权密钥等。</p>
+    <p class="muted" style="margin:4px 0" data-i18n="el-77">MMR 多样性、Webhook 推送、Reranker 精排、API 鉴权密钥等。</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div><input type="checkbox" id="c-mmr" style="width:auto" /> 多样性重排 (MMR)</div>
-      <div style="max-width:150px"><label>MMR λ (0=纯语义 1=纯多样)</label><input id="c-mmr-lambda" type="number" step="0.05" min="0" max="1" value="0.3" /></div>
+      <div style="max-width:150px"><label data-i18n="el-78">MMR λ (0=纯语义 1=纯多样)</label><input id="c-mmr-lambda" type="number" step="0.05" min="0" max="1" value="0.3" /></div>
       <div><input type="checkbox" id="c-salience" style="width:auto" /> 强化评分 (salience)</div>
       <div><input type="checkbox" id="c-related-proj" style="width:auto" /> 跨项目记忆关联</div>
       <div><input type="checkbox" id="c-auto-compress" style="width:auto" /> 自动压缩 (consolidate)</div>
       <div><input type="checkbox" id="c-correct-auto" style="width:auto" /> 自动纠正检测</div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
-      <div><label>Reranker 端点</label><input id="c-reranker-url" placeholder="留空=不用 reranker" /></div>
-      <div><label>Reranker 模型</label><input id="c-reranker-model" placeholder="cross-encoder 模型名" /></div>
+      <div><label data-i18n="el-79">Reranker 端点</label><input id="c-reranker-url" placeholder="留空=不用 reranker" /></div>
+      <div><label data-i18n="el-80">Reranker 模型</label><input id="c-reranker-model" placeholder="cross-encoder 模型名" /></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
-      <div><label>备份路径</label><input id="c-backup-path" placeholder="./backups" /></div>
-      <div style="max-width:150px"><label>工作记忆有效小时</label><input id="c-working-ttl" type="number" step="1" min="0" value="24" /></div>
+      <div><label data-i18n="el-81">备份路径</label><input id="c-backup-path" placeholder="./backups" /></div>
+      <div style="max-width:150px"><label data-i18n="el-82">工作记忆有效小时</label><input id="c-working-ttl" type="number" step="1" min="0" value="24" /></div>
     </div>
     <div style="margin-top:8px">
-      <div><label>Webhook 推送 URL (逗号分隔多个)</label><input id="c-webhook-urls" placeholder="https://hooks.example.com/webhook" /></div>
+      <div><label data-i18n="el-83">Webhook 推送 URL (逗号分隔多个)</label><input id="c-webhook-urls" placeholder="https://hooks.example.com/webhook" /></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px">
         <div><input type="checkbox" id="c-webhook" style="width:auto" /> 启用 Webhook 推送</div>
-        <div style="max-width:150px"><label>超时 (ms)</label><input id="c-webhook-timeout" type="number" step="100" min="1000" value="5000" /></div>
+        <div style="max-width:150px"><label data-i18n="el-84">超时 (ms)</label><input id="c-webhook-timeout" type="number" step="100" min="1000" value="5000" /></div>
       </div>
-      <div style="margin-top:6px"><label>Webhook 签名密钥</label><input id="c-webhook-secret" type="password" placeholder="留空=不签名" /></div>
-      <div style="margin-top:6px"><label>API 鉴权密钥 (JSON 数组，如 ["key1","key2"])</label><input id="c-api-keys" placeholder='[] = 不启用鉴权' /></div>
+      <div style="margin-top:6px"><label data-i18n="el-85">Webhook 签名密钥</label><input id="c-webhook-secret" type="password" placeholder="留空=不签名" /></div>
+      <div style="margin-top:6px"><label data-i18n="el-86">API 鉴权密钥 (JSON 数组，如 ["key1","key2"])</label><input id="c-api-keys" placeholder='[] = 不启用鉴权' /></div>
     </div>
     <div style="margin-top:8px">
       <span class="muted" style="font-size:12px">生命���期策略：</span>
@@ -273,14 +273,14 @@
     </div>
   </div>  <div class="card" style="margin-top:18px">
     <h3 style="margin-top:0" data-i18n="sect-capture-test">自动捕获测试</h3>
-    <p class="muted" style="margin:4px 0">粘贴一段对话/文本，调用 POST /api/capture 即时提炼成记忆（不依赖配置开关也能试）。</p>
+    <p class="muted" style="margin:4px 0" data-i18n="el-87">粘贴一段对话/文本，调用 POST /api/capture 即时提炼成记忆（不依赖配置开关也能试）。</p>
     <div class="row">
-      <div><label>用户</label><input id="cap-user" placeholder="auto" /></div>
-      <div><label>项目</label><input id="cap-project" placeholder="capture_test" /></div>
-      <div><label>附加标签 (逗号分隔)</label><input id="cap-tags" placeholder="demo" /></div>
+      <div><label data-i18n="el-136">用户</label><input id="cap-user" placeholder="auto" /></div>
+      <div><label data-i18n="el-125">项目</label><input id="cap-project" placeholder="capture_test" /></div>
+      <div><label data-i18n="el-90">附加标签 (逗号分隔)</label><input id="cap-tags" placeholder="demo" /></div>
     </div>
-    <label>待捕获文本</label><textarea id="cap-text" placeholder="把要提炼的对话或笔记粘到这里，每行一句最佳。"></textarea>
-    <button onclick="runCapture()">捕获</button>
+    <label data-i18n="el-91">待捕获文本</label><textarea id="cap-text" placeholder="把要提炼的对话或笔记粘到这里，每行一句最佳。"></textarea>
+    <button onclick="runCapture()" data-i18n="el-92">捕获</button>
     <div id="cap-msg" class="msg"></div>
     <div id="cap-result" class="muted" style="margin-top:8px;white-space:pre-wrap"></div>
   </div>
@@ -288,30 +288,30 @@
 
 <!-- 使用帮助 -->
 <div class="pane" id="pane-help">
-  <div id="docs" class="card" style="max-width:880px">加载中…</div>
+  <div id="docs" class="card" style="max-width:880px" data-i18n="el-93">加载中…</div>
 </div>
 
 <!-- 知识图谱 -->
 <div class="pane" id="pane-graph">
   <div class="card" style="max-width:100%">
-    <h3 style="margin-top:0">知识图谱浏览</h3>
-    <p class="muted" style="margin:4px 0">输入一个实体名（如项目、人名、系统），展开它的关系网络。点击节点可继续扩展邻域。需 kg_enabled 且已有抽取数据。</p>
+    <h3 style="margin-top:0" data-i18n="el-94">知识图谱浏览</h3>
+    <p class="muted" style="margin:4px 0" data-i18n="el-95">输入一个实体名（如项目、人名、系统），展开它的关系网络。点击节点可继续扩展邻域。需 kg_enabled 且已有抽取数据。</p>
     <div class="toolbar">
-      <div style="flex:0 0 320px"><label>实体名</label><input id="g-seed" placeholder="例如：Aurora / 小李" /></div>
-      <div style="flex:0 0 auto"><button onclick="gExpand()">展开图谱</button></div>
-      <div style="flex:0 0 auto"><button class="ghost" onclick="gReset()">清空</button></div>
+      <div style="flex:0 0 320px"><label data-i18n="el-96">实体名</label><input id="g-seed" placeholder="例如：Aurora / 小李" /></div>
+      <div style="flex:0 0 auto"><button onclick="gExpand()" data-i18n="el-97">展开图谱</button></div>
+      <div style="flex:0 0 auto"><button class="ghost" onclick="gReset()" data-i18n="el-98">清空</button></div>
     </div>
     <div id="g-msg" class="muted" style="margin:6px 0"></div>
     <svg id="g-svg" style="width:100%;height:520px;background:#0d1117;border:1px solid #30363d;border-radius:8px"></svg>
     <div id="g-legend" class="muted" style="margin-top:6px"></div>
   </div>
   <div class="card" style="max-width:100%;margin-top:18px">
-    <h3 style="margin-top:0">聚合图谱 + 全文索引（v1.10.0）</h3>
-    <p class="muted" style="margin:4px 0">持久化图谱（kg_entities/kg_relations 聚合跨记忆的实体/关系）与 FTS5 全文索引。可视化下方聚合图谱；「重建索引」扫描主存储回填 FTS 与图谱（迁移存量数据用，幂等）。</p>
+    <h3 style="margin-top:0" data-i18n="el-99">聚合图谱 + 全文索引（v1.10.0）</h3>
+    <p class="muted" style="margin:4px 0" data-i18n="el-100">持久化图谱（kg_entities/kg_relations 聚合跨记忆的实体/关系）与 FTS5 全文索引。可视化下方聚合图谱；「重建索引」扫描主存储回填 FTS 与图谱（迁移存量数据用，幂等）。</p>
     <div class="toolbar">
-      <div style="flex:0 0 240px"><label>项目过滤</label><input id="kg-project" placeholder="留空=全部" /></div>
-      <div style="flex:0 0 auto"><button onclick="kgLoad()">加载聚合图谱</button></div>
-      <div style="flex:0 0 auto"><button class="ghost" onclick="kgReindex()">重建索引(FTS+图谱)</button></div>
+      <div style="flex:0 0 240px"><label data-i18n="el-101">项目过滤</label><input id="kg-project" placeholder="留空=全部" /></div>
+      <div style="flex:0 0 auto"><button onclick="kgLoad()" data-i18n="el-102">加载聚合图谱</button></div>
+      <div style="flex:0 0 auto"><button class="ghost" onclick="kgReindex()" data-i18n="el-103">重建索引(FTS+图谱)</button></div>
     </div>
     <div id="kg-msg" class="muted" style="margin:6px 0"></div>
     <svg id="kg-svg" style="width:100%;height:460px;background:#0d1117;border:1px solid #30363d;border-radius:8px"></svg>
@@ -323,23 +323,23 @@
 <div class="pane" id="pane-quality">
   <div class="card">
     <h3 style="margin-top:0" data-i18n="sect-quality">质量监控面板</h3>
-    <p class="muted" style="margin:4px 0">实时采集各操作计数 / 错误数 / 平均延迟，按操作与按日汇总（SQLite metrics 表持久化）。进程重启后「实时」清零，「按日」保留历史。</p>
+    <p class="muted" style="margin:4px 0" data-i18n="el-104">实时采集各操作计数 / 错误数 / 平均延迟，按操作与按日汇总（SQLite metrics 表持久化）。进程重启后「实时」清零，「按日」保留历史。</p>
     <div class="row" id="q-live" style="gap:12px"></div>
     <div style="margin-top:10px"><button class="ghost" data-i18n="btn-refresh" onclick="loadMetrics()">刷新</button><span id="q-msg" class="msg" style="margin-left:10px"></span></div>
   </div>
   <div class="card" style="margin-top:18px">
-    <h3 style="margin-top:0">按操作统计</h3>
-    <table id="q-op"><thead><tr><th>操作</th><th>次数</th><th>错误</th><th>平均延迟(ms)</th><th>错误率</th></tr></thead><tbody></tbody></table>
+    <h3 style="margin-top:0" data-i18n="el-105">按操作统计</h3>
+    <table id="q-op"><thead><tr><th data-i18n="el-106">操作</th><th data-i18n="el-107">次数</th><th data-i18n="el-114">错误</th><th data-i18n="el-115">平均延迟(ms)</th><th data-i18n="el-110">错误率</th></tr></thead><tbody></tbody></table>
   </div>
   <div class="card" style="margin-top:18px">
-    <h3 style="margin-top:0">按日统计（近 30 天）</h3>
-    <table id="q-day"><thead><tr><th>日期</th><th>总次数</th><th>错误</th><th>平均延迟(ms)</th></tr></thead><tbody></tbody></table>
+    <h3 style="margin-top:0" data-i18n="el-111">按日统计（近 30 天）</h3>
+    <table id="q-day"><thead><tr><th data-i18n="el-112">日期</th><th data-i18n="el-113">总次数</th><th data-i18n="el-108">错误</th><th data-i18n="el-109">平均延迟(ms)</th></tr></thead><tbody></tbody></table>
   </div>
   <div class="card" style="margin-top:18px">
     <h3 style="margin-top:0"><span data-i18n="sect-webhook">Webhook 投递状态</span></h3>
-    <p class="muted" style="margin:4px 0">最近 10 条投递记录（环形缓冲）。每 15 秒自动刷新。</p>
-    <table id="wh-table"><thead><tr><th>时间</th><th>事件</th><th>目标</th><th>状态</th></tr></thead><tbody id="wh-tbody"><tr><td colspan="4" class="muted">加载中…</td></tr></tbody></table>
-    <div style="margin-top:8px"><button class="ghost" onclick="loadWebhookRecent()">刷新</button></div>
+    <p class="muted" style="margin:4px 0" data-i18n="el-116">最近 10 条投递记录（环形缓冲）。每 15 秒自动刷新。</p>
+    <table id="wh-table"><thead><tr><th data-i18n="el-117">时间</th><th data-i18n="el-118">事件</th><th data-i18n="el-119">目标</th><th data-i18n="el-120">状态</th></tr></thead><tbody id="wh-tbody"><tr><td colspan="4" class="muted" data-i18n="el-121">加载中…</td></tr></tbody></table>
+    <div style="margin-top:8px"><button class="ghost" onclick="loadWebhookRecent()" data-i18n="el-122">刷新</button></div>
   </div>
   </div>
 </div>
@@ -347,14 +347,14 @@
 <!-- 编辑弹窗 -->
 <div class="modal" id="edit-modal">
   <div class="card">
-    <h3 style="margin-top:0">编辑记忆</h3>
-    <label>内容</label><textarea id="e-content"></textarea>
-    <label>项目</label><input id="e-project" />
-    <label>标签 (逗号分隔)</label><input id="e-tags" />
+    <h3 style="margin-top:0" data-i18n="el-123">编辑记忆</h3>
+    <label data-i18n="el-124">内容</label><textarea id="e-content"></textarea>
+    <label data-i18n="el-89">项目</label><input id="e-project" />
+    <label data-i18n="el-126">标签 (逗号分隔)</label><input id="e-tags" />
     <div id="e-history"></div>
     <div class="actions-row">
-      <button class="ghost" onclick="closeEdit()">取消</button>
-      <button onclick="submitEdit()">保存</button>
+      <button class="ghost" onclick="closeEdit()" data-i18n="el-127">取消</button>
+      <button onclick="submitEdit()" data-i18n="el-128">保存</button>
     </div>
   </div>
 </div>
@@ -362,10 +362,10 @@
 <!-- 历史弹窗 -->
 <div class="modal" id="hist-modal">
   <div class="card">
-    <h3 style="margin-top:0">历史版本</h3>
+    <h3 style="margin-top:0" data-i18n="el-129">历史版本</h3>
     <div id="hist-body"></div>
     <div class="actions-row">
-      <button class="ghost" onclick="closeHist()">关闭</button>
+      <button class="ghost" onclick="closeHist()" data-i18n="el-130">关闭</button>
     </div>
   </div>
 </div>
@@ -373,10 +373,10 @@
 <!-- 溯源弹窗 -->
 <div class="modal" id="src-modal">
   <div class="card">
-    <h3 style="margin-top:0">记忆溯源</h3>
+    <h3 style="margin-top:0" data-i18n="el-131">记忆溯源</h3>
     <div id="src-body"></div>
     <div class="actions-row">
-      <button class="ghost" onclick="closeSrc()">关闭</button>
+      <button class="ghost" onclick="closeSrc()" data-i18n="el-132">关闭</button>
     </div>
   </div>
 </div>
@@ -384,18 +384,18 @@
 <!-- 用户纠正学习 (B1) 弹窗 -->
 <div class="modal" id="correct-modal">
   <div class="card">
-    <h3 style="margin-top:0">用户纠正学习 (B1)</h3>
-    <p class="muted" style="margin:4px 0">把纠正反馈应用到该记忆：更新内容、标记 corrected_at、把 confidence 提升至 0.9、correction_count+1，旧版本自动进 history。</p>
+    <h3 style="margin-top:0" data-i18n="el-133">用户纠正学习 (B1)</h3>
+    <p class="muted" style="margin:4px 0" data-i18n="el-134">把纠正反馈应用到该记忆：更新内容、标记 corrected_at、把 confidence 提升至 0.9、correction_count+1，旧版本自动进 history。</p>
     <div class="row">
-      <div><label>目标记忆 ID</label><input id="co-id" readonly style="opacity:.8" /></div>
-      <div><label>用户</label><input id="co-user" placeholder="human" value="human" /></div>
+      <div><label data-i18n="el-135">目标记忆 ID</label><input id="co-id" readonly style="opacity:.8" /></div>
+      <div><label data-i18n="el-88">用户</label><input id="co-user" placeholder="human" value="human" /></div>
     </div>
-    <div><label>项目（留空=不限项目）</label><input id="co-project" placeholder="如 payment" /></div>
-    <label>纠正反馈内容</label><textarea id="co-feedback" placeholder="例如：不是上海，是深圳；应该记住我们用的是 PostgreSQL 不是 MySQL"></textarea>
+    <div><label data-i18n="el-137">项目（留空=不限项目）</label><input id="co-project" placeholder="如 payment" /></div>
+    <label data-i18n="el-138">纠正反馈内容</label><textarea id="co-feedback" placeholder="例如：不是上海，是深圳；应该记住我们用的是 PostgreSQL 不是 MySQL"></textarea>
     <div id="co-msg" class="msg"></div>
     <div class="actions-row">
-      <button class="ghost" onclick="closeCorrect()">取消</button>
-      <button class="warnbtn" onclick="submitCorrect()">应用纠正</button>
+      <button class="ghost" onclick="closeCorrect()" data-i18n="el-139">取消</button>
+      <button class="warnbtn" onclick="submitCorrect()" data-i18n="el-140">应用纠正</button>
     </div>
   </div>
 </div>
@@ -404,12 +404,12 @@
 <div id="login-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;">
   <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:32px;max-width:380px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
     <h2 style="margin:0 0 8px 0;color:#e6edf3" data-i18n="auth-login-title">鉴权需要</h2>
-    <p class="muted" style="margin:0 0 16px 0;font-size:13px">请输入你在 config.json 的 api_keys 中配置的密钥</p>
+    <p class="muted" style="margin:0 0 16px 0;font-size:13px" data-i18n="el-141">请输入你在 config.json 的 api_keys 中配置的密钥</p>
     <div style="position:relative;margin-bottom:12px">
       <input id="login-key" type="password" data-i18n="auth-placeholder" placeholder="输入密钥" style="width:100%;padding:10px 36px 10px 12px;border:1px solid #30363d;border-radius:8px;background:#0d1117;color:#e6edf3;box-sizing:border-box" />
       <span id="login-eye" onclick="toggleKeyVis()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:#8b949e;font-size:13px;user-select:none">显示</span>
     </div>
-    <button id="login-btn" onclick="login()" style="width:100%;padding:10px;border:none;border-radius:8px;background:#238636;color:#fff;cursor:pointer;font-size:14px">确认</button>
+    <button id="login-btn" onclick="login()" style="width:100%;padding:10px;border:none;border-radius:8px;background:#238636;color:#fff;cursor:pointer;font-size:14px" data-i18n="el-142">确认</button>
     <p id="login-msg" class="muted" style="font-size:12px;margin-top:8px"></p>
   </div>
 </div>
@@ -454,7 +454,12 @@ const __lang = {
     'test-running':'Testing\u2026', 'test-fail':'Request failed', 'sect-quality':'Quality Monitor', 'sect-database':'Database & Embedding', 'sect-llm-capture':'LLM & Capture', 'sect-kg':'Knowledge Graph',
   }
 };
-function t(key) { const loc = __lang[getLocale()]; return loc && loc[key] || key; }
+function t(key) {
+  const loc = __lang[getLocale()];
+  if (loc && loc[key] !== undefined) return loc[key];
+  const zh = __lang['zh'];
+  return (zh && zh[key] !== undefined) ? zh[key] : key;
+}
 function applyLang() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.dataset.i18n;
@@ -590,7 +595,7 @@ async function runSearch() {
       const created = (rw.created_at||'').replace('T',' ').slice(0,19);
       const updated = (rw.updated_at||'').replace('T',' ').slice(0,19);
       const lastAcc = (rw.last_accessed_at||'').replace('T',' ').slice(0,19);
-      const histCell = (rw.history && rw.history.length) ? '<a class="hlink" onclick="showHistory(\'' + rw.id + '\')">' + rw.history.length + ' 版</a>' : '-';
+      const histCell = (rw.history && rw.history.length) ? '<a class="hlink" onclick="showHistory(\'' + rw.id + '\')" data-i18n="el-143">' + rw.history.length + ' 版</a>' : '-';
       const relTag = rw.related_project ? '<span class="reltag" title="来自关联项目（强度 ' + (rw.relation_strength!=null?rw.relation_strength:'?') + '）' + (rw.relation_note?('：'+esc(rw.relation_note)):'') + '">↳ ' + esc(rw.related_project) + ' (' + strengthLabel(rw.relation_strength) + ')</span> ' : '';
       tr.innerHTML = '<td class="content">' + relTag + esc(rw.content) + '</td>' +
         '<td>' + esc(rw.project || '-') + '</td><td>' + esc(rw.session || '-') + '</td>' +
@@ -602,13 +607,13 @@ async function runSearch() {
         '<td class="muted">' + esc(updated) + '</td>' +
         '<td class="muted">' + (lastAcc ? esc(lastAcc) : '<span title="尚未被访问/强化">—</span>') + '</td>' +
         '<td>' + histCell + '</td>' +
-        '<td><a class="hlink" onclick="showSource(\'' + rw.id + '\')">溯源</a></td>' +
+        '<td><a class="hlink" onclick="showSource(\'' + rw.id + '\')" data-i18n="el-144">溯源</a></td>' +
         '<td class="muted">' + (rw.score!=null?rw.score.toFixed(2):'-') + '</td>' +
         '<td class="muted" title="access_count=' + (rw.access_count||0) + '">' + (rw.salience!=null?rw.salience.toFixed(2):'-') + '</td>' +
         '<td class="muted" title="被用户纠正的次数">' + (rw.correction_count ? ('<span class="corrcount">'+rw.correction_count+'</span>') : '0') + '</td>' +
-        '<td class="actions"><button class="ghost" onclick="openEdit(\'' + rw.id + '\')">编辑</button> ' +
-        '<button class="warnbtn" onclick="openCorrect(\'' + rw.id + '\')">纠正</button> ' +
-        '<button class="danger" onclick="del(\'' + rw.id + '\')">删除</button></td>';
+        '<td class="actions"><button class="ghost" onclick="openEdit(\'' + rw.id + '\')" data-i18n="el-145">编辑</button> ' +
+        '<button class="warnbtn" onclick="openCorrect(\'' + rw.id + '\')" data-i18n="el-146">纠正</button> ' +
+        '<button class="danger" onclick="del(\'' + rw.id + '\')" data-i18n="el-147">删除</button></td>';
       tb.appendChild(tr);
     });
   } catch (e) { showMsg('#data-msg', '查询失败: ' + e.message, 'err'); }
@@ -816,7 +821,7 @@ async function openEdit(id) {
   $('#e-content').value = j.content || ''; $('#e-project').value = j.project || '';
   $('#e-tags').value = (j.tags || []).join(', ');
   const hist = j.history || [];
-  $('#e-history').innerHTML = hist.length ? ('<label>历史版本</label><div class="histbox">' +
+  $('#e-history').innerHTML = hist.length ? ('<label data-i18n="el-148">历史版本</label><div class="histbox">' +
     hist.slice().reverse().map(h => '<div class="histitem"><span class="muted">' + esc((h.at||'').replace('T',' ').slice(0,19)) + '</span> ' + esc(h.content) + '</div>').join('') +
     '</div>') : '';
   $('#edit-modal').classList.add('show');
@@ -839,7 +844,7 @@ async function showHistory(id) {
     const r = await fetch('/api/memories/' + encodeURIComponent(id));
     const j = await r.json();
     const hist = j.history || [];
-    $('#hist-body').innerHTML = hist.length ? hist.slice().reverse().map(h => '<div class="histitem"><span class="muted">' + esc((h.at||'').replace('T',' ').slice(0,19)) + '</span> ' + esc(h.content) + '</div>').join('') : '<p class="muted">暂无历史版本</p>';
+    $('#hist-body').innerHTML = hist.length ? hist.slice().reverse().map(h => '<div class="histitem"><span class="muted">' + esc((h.at||'').replace('T',' ').slice(0,19)) + '</span> ' + esc(h.content) + '</div>').join('') : '<p class="muted" data-i18n="el-152">暂无历史版本</p>';
     $('#hist-modal').classList.add('show');
   } catch (e) { alert('读取历史失败'); }
 }
@@ -854,7 +859,7 @@ async function loadLinks() {
     (j.links || []).forEach(l => {
       const tr = document.createElement('tr');
       tr.innerHTML = '<td>' + esc(l.from_project) + '</td><td>' + esc(l.to_project) + '</td><td>' + strengthLabel(l.strength) + ' (' + l.strength + ')</td><td class="muted">' + esc(l.note || '') + '</td>' +
-        '<td class="actions"><button class="danger" onclick="delLink(\'' + esc(l.from_project) + '\',\'' + esc(l.to_project) + '\')">删除</button></td>';
+        '<td class="actions"><button class="danger" onclick="delLink(\'' + esc(l.from_project) + '\',\'' + esc(l.to_project) + '\')" data-i18n="el-150">删除</button></td>';
       tb.appendChild(tr);
     });
   } catch (e) {}
@@ -889,8 +894,8 @@ async function showSource(id) {
     html += rows.map(x => '<tr><td class="muted" style="padding:4px 16px 4px 0;vertical-align:top">' + x[0] + '</td><td style="padding:4px 0;vertical-align:top">' + x[1] + '</td></tr>').join('');
     html += '</tbody></table>';
     const hist = j.history || [];
-    html += '<h3 style="margin-top:16px">内容演变 (' + hist.length + ' 版)</h3>';
-    html += hist.length ? ('<div class="histbox">' + hist.slice().reverse().map(h => '<div class="histitem"><span class="muted">' + esc((h.at || '').replace('T', ' ').slice(0, 19)) + '</span> ' + esc(h.content) + '</div>').join('') + '</div>') : '<p class="muted">暂无历史版本</p>';
+    html += '<h3 style="margin-top:16px" data-i18n="el-151">内容演变 (' + hist.length + ' 版)</h3>';
+    html += hist.length ? ('<div class="histbox">' + hist.slice().reverse().map(h => '<div class="histitem"><span class="muted">' + esc((h.at || '').replace('T', ' ').slice(0, 19)) + '</span> ' + esc(h.content) + '</div>').join('') + '</div>') : '<p class="muted" data-i18n="el-149">暂无历史版本</p>';
     $('#src-body').innerHTML = html;
     $('#src-modal').classList.add('show');
   } catch (e) { alert('读取溯源失败'); }
@@ -908,7 +913,7 @@ async function loadDocs() {
         return '<li><code>' + esc(k) + '</code> (' + esc(v.type) + en + ')' + req + (v.description ? ' — ' + esc(v.description) : '') + '</li>';
       }).join('');
       return '<div style="margin-bottom:14px"><b>' + esc(t.name) + '</b> <span class="muted">' + esc(t.description || '') + '</span>'
-        + '<ul style="margin:4px 0 0 18px;color:#c9d1d9;font-size:12.5px">' + (params || '<li class="muted">无参数</li>') + '</ul></div>';
+        + '<ul style="margin:4px 0 0 18px;color:#c9d1d9;font-size:12.5px">' + (params || '<li class="muted" data-i18n="el-153">无参数</li>') + '</ul></div>';
     }).join('');
     const apiRows = (d.rest_api || []).map(a =>
       '<tr><td><code>' + esc(a.method) + '</code></td><td><code>' + esc(a.path) + '</code></td><td>' + esc(a.desc) + '</td></tr>').join('');
@@ -918,19 +923,19 @@ async function loadDocs() {
       '<tr><td><code>' + esc(m.mode) + '</code></td><td>' + esc(m.desc) + '</td></tr>').join('');
     const notes = (d.notes || []).map(n => '<li>' + esc(n) + '</li>').join('');
     box.innerHTML =
-      '<h3 style="margin-top:0">AI Memory 使用帮助</h3>'
-      + '<p class="muted">服务版本 v' + esc(d.server_version || '?') + '</p>'
+      '<h3 style="margin-top:0" data-i18n="el-154">AI Memory 使用帮助</h3>'
+      + '<p class="muted" data-i18n="el-155">服务版本 v' + esc(d.server_version || '?') + '</p>'
       + '<p>' + esc(d.overview || '') + '</p>'
-      + '<p class="muted"><b>传输方式：</b>' + esc(d.transport || '') + '</p>'
-      + '<h3>MCP 工具接口</h3><div>' + toolRows + '</div>'
-      + '<h3>REST API（供本管理界面/脚本调用）</h3>'
-      + '<table><thead><tr><th>方法</th><th>路径</th><th>说明</th></tr></thead><tbody>' + apiRows + '</tbody></table>'
-      + '<h3>配置项说明</h3>'
-      + '<table><thead><tr><th>字段</th><th>说明</th></tr></thead><tbody>' + cfgRows + '</tbody></table>'
-      + '<h3>检索模式</h3>'
-      + '<table><thead><tr><th>模式</th><th>说明</th></tr></thead><tbody>' + modeRows + '</tbody></table>'
-      + '<h3>部署架构</h3><p class="muted">' + esc(d.architecture || '') + '</p>'
-      + '<h3>注意事项</h3><ul style="color:#c9d1d9;font-size:12.5px">' + notes + '</ul>';
+      + '<p class="muted"><b data-i18n="el-156">传输方式：</b>' + esc(d.transport || '') + '</p>'
+      + '<h3 data-i18n="el-157">MCP 工具接口</h3><div>' + toolRows + '</div>'
+      + '<h3 data-i18n="el-158">REST API（供本管理界面/脚本调用）</h3>'
+      + '<table><thead><tr><th data-i18n="el-159">方法</th><th data-i18n="el-160">路径</th><th data-i18n="el-167">说明</th></tr></thead><tbody>' + apiRows + '</tbody></table>'
+      + '<h3 data-i18n="el-162">配置项说明</h3>'
+      + '<table><thead><tr><th data-i18n="el-163">字段</th><th data-i18n="el-164">说明</th></tr></thead><tbody>' + cfgRows + '</tbody></table>'
+      + '<h3 data-i18n="el-165">检索模式</h3>'
+      + '<table><thead><tr><th data-i18n="el-166">模式</th><th data-i18n="el-161">说明</th></tr></thead><tbody>' + modeRows + '</tbody></table>'
+      + '<h3 data-i18n="el-168">部署架构</h3><p class="muted">' + esc(d.architecture || '') + '</p>'
+      + '<h3 data-i18n="el-169">注意事项</h3><ul style="color:#c9d1d9;font-size:12.5px">' + notes + '</ul>';
   } catch (e) { box.innerHTML = '帮助加载失败: ' + esc(e.message); }
 }
 
@@ -1033,7 +1038,7 @@ function kgDraw(kgNodes, kgLinks, lm, W, H) {
   let h = '';
   for (const l of lm) { h += '<line x1="' + l.s.x.toFixed(1) + '" y1="' + l.s.y.toFixed(1) + '" x2="' + l.t.x.toFixed(1) + '" y2="' + l.t.y.toFixed(1) + '" stroke="#30363d" stroke-width="1.5"><title>' + esc(l.type) + '</title></line>'; }
   for (const n of kgNodes.values()) { const c = color[n.type] || '#8b949e'; const rad = Math.min(18, 9 + (n.count || 0));
-    h += '<g><circle cx="' + n.x.toFixed(1) + '" cy="' + n.y.toFixed(1) + '" r="' + rad + '" fill="' + c + '"><title>' + esc(n.label) + ' | 出现 ' + (n.count || 0) + ' 次</title></circle>' +
+    h += '<g><circle cx="' + n.x.toFixed(1) + '" cy="' + n.y.toFixed(1) + '" r="' + rad + '" fill="' + c + '"><title data-i18n="el-170">' + esc(n.label) + ' | 出现 ' + (n.count || 0) + ' 次</title></circle>' +
        '<text x="' + (n.x + 12).toFixed(1) + '" y="' + (n.y + 4).toFixed(1) + '" fill="#e6edf3" font-size="12">' + esc(n.label) + '</text></g>'; }
   svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H); svg.innerHTML = h;
   const used = [...new Set([...kgNodes.values()].map(n => n.type))];
@@ -1069,14 +1074,14 @@ async function loadMetrics() {
       tr.innerHTML = '<td><code>' + esc(o.op) + '</code></td><td>' + o.count + '</td><td' + (o.errors ? ' style="color:#f85149"' : '') + '>' + o.errors + '</td><td>' + (o.avg_ms != null ? o.avg_ms : 0) + '</td><td>' + rate + '</td>';
       ot.appendChild(tr);
     });
-    if (!(j.by_op || []).length) ot.innerHTML = '<tr><td colspan="5" class="muted">暂无操作记录</td></tr>';
+    if (!(j.by_op || []).length) ot.innerHTML = '<tr><td colspan="5" class="muted" data-i18n="el-171">暂无操作记录</td></tr>';
     const dt = $('#q-day tbody'); dt.innerHTML = '';
     (j.by_day || []).forEach(d => {
       const tr = document.createElement('tr');
       tr.innerHTML = '<td>' + esc(d.day) + '</td><td>' + d.total + '</td><td' + (d.errors ? ' style="color:#f85149"' : '') + '>' + d.errors + '</td><td>' + (d.avg_ms != null ? d.avg_ms : 0) + '</td>';
       dt.appendChild(tr);
     });
-    if (!(j.by_day || []).length) dt.innerHTML = '<tr><td colspan="4" class="muted">暂无按日记录</td></tr>';
+    if (!(j.by_day || []).length) dt.innerHTML = '<tr><td colspan="4" class="muted" data-i18n="el-172">暂无按日记录</td></tr>';
     showMsg('#q-msg', '已更新 ' + new Date().toLocaleTimeString(), 'ok');
   } catch (e) { showMsg('#q-msg', '加载失败: ' + e.message, 'err'); }
 }
@@ -1123,7 +1128,7 @@ async function loadWebhookRecent() {
     const r = await fetch('/api/webhooks/recent');
     const j = await r.json();
     const tb = $('#wh-tbody');
-    if (!j || !j.length) { tb.innerHTML = '<tr><td colspan="4" class="muted">暂无投递记录</td></tr>'; return; }
+    if (!j || !j.length) { tb.innerHTML = '<tr><td colspan="4" class="muted" data-i18n="el-173">暂无投递记录</td></tr>'; return; }
     tb.innerHTML = j.slice(0, 10).map(w =>
       '<tr><td style="font-size:11px">' + esc(w.ts || '') + '</td><td>' + esc(w.event || '') + '</td><td style="font-size:11px">' + esc((w.url || '').slice(0, 40)) + '</td><td>' + (w.ok ? '<span style="color:#3fb950">成功</span>' : '<span style="color:#f85149">失败</span>') + '</td></tr>'
     ).join('');

@@ -405,10 +405,12 @@ function login() {
   const key = document.getElementById('login-key').value.trim();
   if (!key) { document.getElementById('login-msg').textContent = '请输入密钥'; return; }
   setAuthKey(key);
-  document.getElementById('login-overlay').style.display = 'none';
-  document.getElementById('login-msg').textContent = '';
-  // 用一次 health 验证 key 是否有效（会触发 401 自动弹窗）
-  fetch('/api/health').catch(() => {});
+  // 验证 key 是否有效
+  fetch('/api/health', { headers: { 'Authorization': 'Bearer ' + key } }).then(r => {
+    if (!r.ok) { setAuthKey(''); document.getElementById('login-msg').textContent = '密钥错误，请重新输入'; document.getElementById('login-key').value = ''; return; }
+    document.getElementById('login-overlay').style.display = 'none';
+    document.getElementById('login-msg').textContent = '';
+  }).catch(() => { setAuthKey(''); document.getElementById('login-msg').textContent = '连接失败，请重试'; });
 }
 // 检查是否已有 key，没有则弹出登录
 (function() {

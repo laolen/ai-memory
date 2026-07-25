@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "start:dev": "node --watch server.js",
     "deploy": "node deploy.js",
     "verify": "node test/run.js",
     "test:unit": "node test/unit.js",
@@ -13,6 +14,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
+    "@fastify/rate-limit": "^11.1.0",
     "@fastify/swagger": "^9.8.1",
     "@fastify/swagger-ui": "^6.1.0",
     "@modelcontextprotocol/sdk": "^1.29.0",

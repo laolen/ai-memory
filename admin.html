@@ -73,16 +73,17 @@
     <span id="st-emb"><span class="dot warn"></span>向量未启用</span>
     <span id="st-dedup" style="font-size:11px;color:#8b949e;margin-left:10px"></span>
     <span id="st-auth" style="font-size:11px;color:#8b949e;margin-left:10px;cursor:pointer" onclick="clearAuthKey()" title="清除密钥"></span>
+    <span id="lang-btn" onclick="toggleLang()" style="font-size:11px;color:#8b949e;margin-left:10px;cursor:pointer;text-decoration:underline">EN</span>
   </div>
 </header>
 
 <div class="tabs">
-  <div class="tab active" data-pane="data">数据管理</div>
-  <div class="tab" data-pane="config">配置</div>
-  <div class="tab" data-pane="help">使用帮助</div>
-  <div class="tab" data-pane="graph">知识图谱</div>
-  <div class="tab" data-pane="links">项目关系</div>
-  <div class="tab" data-pane="quality">质量监控</div>
+  <div class="tab active" data-pane="data" data-i18n="tab-data">数据管理</div>
+  <div class="tab" data-pane="config" data-i18n="tab-config">配置</div>
+  <div class="tab" data-pane="help" data-i18n="tab-help">使用帮助</div>
+  <div class="tab" data-pane="graph" data-i18n="tab-graph">知识图谱</div>
+  <div class="tab" data-pane="links" data-i18n="tab-links">项目关系</div>
+  <div class="tab" data-pane="quality" data-i18n="tab-quality">质量监控</div>
 </div>
 
 <!-- 数据管理 -->
@@ -137,10 +138,10 @@
     <h3 style="margin-top:0">向量数据库 (Qdrant)</h3>
     <p class="muted" style="margin:4px 0">Qdrant 无需用户名 / 密码（内网部署默认无鉴权；若日后启用 API Key 再补字段）。</p>
     <div class="row">
-      <div><label>Qdrant 地址</label><input id="c-qdrant-url" placeholder="http://192.168.110.248:6333" /></div>
+      <div><label data-i18n="lbl-qdrant-url">Qdrant 地址</label><input id="c-qdrant-url" placeholder="http://192.168.110.248:6333" /></div>
       <div><label>集合名 (collection)</label><input id="c-qdrant-coll" placeholder="memories" /></div>
     </div>
-    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('db')">测试 Qdrant 连接</button><span id="t-db" class="test-msg"></span></div>
+    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('db')">data-i18n="btn-test-db">data-i18n="btn-test-db">测试 Qdrant 连接</button><span id="t-db" class="test-msg"></span></div>
     <h3>模型 API (嵌入/向量)</h3>
     <p class="muted" style="margin:4px 0">嵌入支持本地（Ollama/llama-embed，API Key 留空）或云端（OpenAI 兼容 /v1/embeddings，填对应 Key）。</p>
     <div class="row">
@@ -148,7 +149,7 @@
       <div><label>模型名</label><input id="c-emb-model" placeholder="nomic-embed-text 或 text-embedding-3-small" /></div>
     </div>
     <div><label>API Key（云端才填，本地留空）</label><input id="c-emb-key" type="password" placeholder="云端 Embedding 的 Bearer Token；本地 Ollama 留空" /></div>
-    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('embedding')">测试嵌入模型</button><span id="t-embedding" class="test-msg"></span></div>
+    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('embedding')">data-i18n="btn-test-emb">data-i18n="btn-test-emb">测试嵌入模型</button><span id="t-embedding" class="test-msg"></span></div>
     <h3>记忆去重 / 合并</h3>
     <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:12px 0 4px">
       <input type="checkbox" id="c-dedup" style="width:auto" /> 启用记忆合并（相似内容自动合并，避免重复）
@@ -169,11 +170,11 @@
     </label>
     <p class="muted" style="margin:8px 0 4px">捕获 LLM 支持本地（Ollama，Key 留空）或云端（DeepSeek/OpenAI/硅基流动，填端点 + Key）。</p>
     <div class="row">
-      <div><label>LLM 端点 (OpenAI 兼容 /v1/chat/completions)</label><input id="c-llm-url" placeholder="http://127.0.0.1:11434/v1/chat/completions 或 https://api.deepseek.com/v1/chat/completions" /></div>
-      <div><label>LLM 模型名</label><input id="c-llm-model" placeholder="minicpm5-1b 或云端模型 id" /></div>
+      <div><label data-i18n="lbl-llm-url">LLM 端点 (OpenAI 兼容 /v1/chat/completions)</label><input id="c-llm-url" placeholder="http://127.0.0.1:11434/v1/chat/completions 或 https://api.deepseek.com/v1/chat/completions" /></div>
+      <div><label data-i18n="lbl-llm-model">LLM 模型名</label><input id="c-llm-model" placeholder="minicpm5-1b 或云端模型 id" /></div>
     </div>
     <div><label>API Key（云端才填，本地留空）</label><input id="c-llm-key" type="password" placeholder="云端 chat 的 Bearer Token；本地 Ollama 留空" /></div>
-    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('llm')">测试捕获 LLM</button><span id="t-llm" class="test-msg"></span></div>
+    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('llm')">data-i18n="btn-test-llm">data-i18n="btn-test-llm">测试捕获 LLM</button><span id="t-llm" class="test-msg"></span></div>
     <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:12px 0 4px">
       <input type="checkbox" id="c-watch" style="width:auto" /> 启用文件/目录监听（tail 新增内容自动捕获）
     </label>
@@ -224,16 +225,16 @@
       <div><label>图谱端点 kg_url（留空=复用捕获 LLM 端点）</label><input id="c-kg-url" placeholder="https://api.deepseek.com/v1/chat/completions（可选，独立云端）" /></div>
       <div><label>图谱 API Key（留空=复用 LLM Key）</label><input id="c-kg-key" type="password" placeholder="可选；云端才填" /></div>
     </div>
-    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('kg')">测试图谱抽取</button><span id="t-kg" class="test-msg"></span></div>
+    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('kg')">data-i18n="btn-test-kg">data-i18n="btn-test-kg">测试图谱抽取</button><span id="t-kg" class="test-msg"></span></div>
     <div><label>实体同义词归一表 (JSON，alias→canonical，留空无)</label><textarea id="c-kg-syn" placeholder='{"李工":"小李","Aurora 项目":"Aurora"}'></textarea></div>
-    <button onclick="saveConfig()">保存并重启服务</button>
-    <button class="ghost" onclick="diagnose()">测试连接</button>
+    <button onclick="saveConfig()">data-i18n="btn-save">data-i18n="btn-save">保存并重启服务</button>
+    <button class="ghost" onclick="diagnose()">data-i18n="btn-diagnose">data-i18n="btn-diagnose">测试连接</button>
     <div id="cfg-msg" class="msg"></div>
     <p class="muted" style="margin-top:14px">保存后服务会自动重启（约十几秒），页面将自动重连。Embedding 接口需兼容 Ollama 的 <code>/api/embed</code> 格式（POST {model,input} → {embeddings}）或 OpenAI <code>/v1/embeddings</code>。</p>
   </div>
 
   <div class="card" style="margin-top:18px">
-    <h3 style="margin-top:0">高级配置（v1.14.0+）</h3>
+    <h3 style="margin-top:0" data-i18n="sect-advanced">高级配置（v1.14.0+）</h3>
     <p class="muted" style="margin:4px 0">MMR 多样性、Webhook 推送、Reranker 精排、API 鉴权密钥等。</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
       <div><input type="checkbox" id="c-mmr" style="width:auto" /> 多样性重排 (MMR)</div>
@@ -271,7 +272,7 @@
       </select>
     </div>
   </div>  <div class="card" style="margin-top:18px">
-    <h3 style="margin-top:0">自动捕获测试</h3>
+    <h3 style="margin-top:0" data-i18n="sect-capture-test">自动捕获测试</h3>
     <p class="muted" style="margin:4px 0">粘贴一段对话/文本，调用 POST /api/capture 即时提炼成记忆（不依赖配置开关也能试）。</p>
     <div class="row">
       <div><label>用户</label><input id="cap-user" placeholder="auto" /></div>
@@ -324,7 +325,7 @@
     <h3 style="margin-top:0">质量监控面板 (v1.8.0)</h3>
     <p class="muted" style="margin:4px 0">实时采集各操作计数 / 错误数 / 平均延迟，按操作与按日汇总（SQLite metrics 表持久化）。进程重启后「实时」清零，「按日」保留历史。</p>
     <div class="row" id="q-live" style="gap:12px"></div>
-    <div style="margin-top:10px"><button class="ghost" onclick="loadMetrics()">刷新</button><span id="q-msg" class="msg" style="margin-left:10px"></span></div>
+    <div style="margin-top:10px"><button class="ghost" data-i18n="btn-refresh" data-i18n="btn-refresh" onclick="loadMetrics()">刷新</button><span id="q-msg" class="msg" style="margin-left:10px"></span></div>
   </div>
   <div class="card" style="margin-top:18px">
     <h3 style="margin-top:0">按操作统计</h3>
@@ -335,7 +336,7 @@
     <table id="q-day"><thead><tr><th>日期</th><th>总次数</th><th>错误</th><th>平均延迟(ms)</th></tr></thead><tbody></tbody></table>
   </div>
   <div class="card" style="margin-top:18px">
-    <h3 style="margin-top:0">Webhook 投递状态</h3>
+    <h3 style="margin-top:0"><span data-i18n="sect-webhook">Webhook 投递状态</span></h3>
     <p class="muted" style="margin:4px 0">最近 10 条投递记录（环形缓冲）。每 15 秒自动刷新。</p>
     <table id="wh-table"><thead><tr><th>时间</th><th>事件</th><th>目标</th><th>状态</th></tr></thead><tbody id="wh-tbody"><tr><td colspan="4" class="muted">加载中…</td></tr></tbody></table>
     <div style="margin-top:8px"><button class="ghost" onclick="loadWebhookRecent()">刷新</button></div>
@@ -402,7 +403,7 @@
 <!-- 登录弹窗（公网部署时 api_keys 非空会 401，需在此输入 key） -->
 <div id="login-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;">
   <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:32px;max-width:380px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
-    <h2 style="margin:0 0 8px 0;color:#e6edf3">鉴权需要</h2>
+    <h2 style="margin:0 0 8px 0;color:#e6edf3">data-i18n="auth-login-title">data-i18n="auth-login-title">鉴权需要</h2>
     <p class="muted" style="margin:0 0 16px 0;font-size:13px">请输入你在 config.json 的 api_keys 中配置的密钥</p>
     <div style="position:relative;margin-bottom:12px">
       <input id="login-key" type="password" placeholder="输入密钥" style="width:100%;padding:10px 36px 10px 12px;border:1px solid #30363d;border-radius:8px;background:#0d1117;color:#e6edf3;box-sizing:border-box" />
@@ -414,6 +415,53 @@
 </div>
 <script>
 const $ = s => document.querySelector(s);
+
+// ---- 国际化 (i18n) ----
+const _LOCALE_KEY = 'ai-memory-locale';
+function getLocale() { return localStorage.getItem(_LOCALE_KEY) || 'zh'; }
+function setLocale(l) { localStorage.setItem(_LOCALE_KEY, l); }
+const __lang = {
+  zh: {
+    'tab-data':'数据管理', 'tab-config':'配置', 'tab-help':'使用帮助', 'tab-graph':'知识图谱', 'tab-links':'项目关系', 'tab-quality':'质量监控',
+    'hdr-title':'AI Memory 管理界面',
+    'btn-save':'保存并重启服务', 'btn-diagnose':'测试连接', 'btn-test-db':'测试 Qdrant 连接', 'btn-test-emb':'测试嵌入模型', 'btn-test-llm':'测试捕获 LLM', 'btn-test-kg':'测试图谱抽取',
+    'btn-capture':'开始捕获', 'btn-refresh':'刷新', 'btn-search':'搜索', 'btn-reset':'重置', 'btn-export':'导出', 'btn-import':'导入',
+    'lbl-capture-text':'粘贴对话/文本', 'lbl-capture-user':'用户', 'lbl-capture-project':'项目', 'lbl-capture-tags':'标签',
+    'lbl-qdrant-url':'Qdrant 地址', 'lbl-emb-url':'Embedding 端点', 'lbl-emb-model':'嵌入模型', 'lbl-llm-url':'LLM 端点', 'lbl-llm-model':'LLM 模型',
+    'sect-advanced':'高级配置', 'sect-advanced-desc':'MMR、Webhook、Reranker、API 鉴权密钥等',
+    'auth-login-title':'鉴权需要', 'auth-login-desc':'请输入你在 config.json 的 api_keys 中配置的密钥', 'auth-placeholder':'输入密钥', 'auth-confirm':'确认',
+    'msg-err-key':'请输入密钥', 'msg-bad-key':'密钥错误，请重新输入', 'msg-conn-fail':'连接失败，请重试',
+    'st-auth-logged':'已登录', 'st-auth-unlogged':'未登录', 'lang-btn':'EN',
+  },
+  en: {
+    'tab-data':'Data', 'tab-config':'Config', 'tab-help':'Help', 'tab-graph':'Knowledge Graph', 'tab-links':'Project Links', 'tab-quality':'Quality',
+    'hdr-title':'AI Memory Admin',
+    'btn-save':'Save & Restart', 'btn-diagnose':'Test Connection', 'btn-test-db':'Test Qdrant', 'btn-test-emb':'Test Embedding', 'btn-test-llm':'Test LLM', 'btn-test-kg':'Test KG',
+    'btn-capture':'Capture', 'btn-refresh':'Refresh', 'btn-search':'Search', 'btn-reset':'Reset', 'btn-export':'Export', 'btn-import':'Import',
+    'lbl-capture-text':'Paste text to capture', 'lbl-capture-user':'User', 'lbl-capture-project':'Project', 'lbl-capture-tags':'Tags',
+    'lbl-qdrant-url':'Qdrant URL', 'lbl-emb-url':'Embedding Endpoint', 'lbl-emb-model':'Embedding Model', 'lbl-llm-url':'LLM Endpoint', 'lbl-llm-model':'LLM Model',
+    'sect-advanced':'Advanced Config', 'sect-advanced-desc':'MMR, Webhook, Reranker, API Keys, etc.',
+    'auth-login-title':'Authentication Required', 'auth-login-desc':'Enter your API key configured in config.json api_keys', 'auth-placeholder':'Enter API key', 'auth-confirm':'Login',
+    'msg-err-key':'Please enter a key', 'msg-bad-key':'Invalid key, please try again', 'msg-conn-fail':'Connection failed',
+    'st-auth-logged':'Logged in', 'st-auth-unlogged':'Not logged in', 'lang-btn':'中文',
+  }
+};
+function t(key) { const loc = __lang[getLocale()]; return loc && loc[key] || key; }
+function applyLang() {
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.dataset.i18n;
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') { el.placeholder = t(key) || el.placeholder; }
+    else { el.textContent = t(key) || el.textContent; }
+  });
+  $('#lang-btn').textContent = t('lang-btn');
+  $('#header-title').textContent = t('hdr-title');
+}
+function toggleLang() {
+  setLocale(getLocale() === 'zh' ? 'en' : 'zh');
+  applyLang();
+}
+// 页面加载时应用已保存的语言偏好
+(function() { applyLang(); })();
 
 // ---- 鉴权：API key 管理（公网部署需要） ----
 const AUTH_KEY = 'ai-memory-admin-key';

@@ -8,6 +8,7 @@
     "deploy": "node deploy.js",
     "verify": "node test/run.js",
     "test:unit": "node test/unit.js",
+    "test:quick": "node test/unit.js && node test/health.js && node test/memory_ops.js",
     "test:full": "BASE=http://192.168.110.128:8765 node test/run.js"
   },
   "dependencies": {

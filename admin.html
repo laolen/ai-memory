@@ -5,64 +5,93 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title data-i18n="el-1">AI Memory 管理界面</title>
 <style>
+  :root {
+    --bg:var(--bg); --panel:var(--panel); --input-bg:var(--input-bg); --border:var(--border); --border-strong:var(--border-strong);
+    --text:var(--text); --muted:var(--muted); --accent:var(--accent); --accent-border:var(--accent-border); --accent-bg:var(--accent-bg);
+    --ok:var(--ok); --ok-bg:var(--ok-bg); --ok-border:var(--ok-border);
+    --danger:var(--danger); --danger-bg:var(--danger-bg); --danger-border:var(--danger-border); --danger-btn:var(--danger-btn);
+    --info-bg:var(--info-bg); --warn:var(--warn); --warn-text:var(--warn-text); --warn-bg:var(--warn-bg); --warn-border:var(--warn-border);
+    --warn-btn:var(--warn-btn); --warn-btn-hover:var(--warn-btn-hover); --btn:var(--btn); --btn-hover:var(--btn-hover);
+  }
+  [data-theme="light"] {
+    --bg:var(--bg); --panel:var(--panel); --input-bg:var(--bg); --border:var(--border); --border-strong:var(--border-strong);
+    --text:var(--text); --muted:var(--muted); --accent:var(--accent); --accent-border:var(--accent-border); --accent-bg:var(--accent-bg);
+    --ok:var(--ok); --ok-bg:var(--ok-bg); --ok-border:var(--ok-border);
+    --danger:var(--danger); --danger-bg:var(--danger-bg); --danger-border:var(--danger-border); --danger-btn:var(--danger);
+    --info-bg:var(--accent-bg); --warn:var(--warn); --warn-text:var(--warn); --warn-bg:var(--warn-bg); --warn-border:var(--warn-border);
+    --warn-btn:var(--warn); --warn-btn-hover:var(--warn-btn-hover); --btn:var(--btn); --btn-hover:var(--ok);
+  }
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, "PingFang SC", "Microsoft YaHei", sans-serif;
-         background: #0f1419; color: #e6edf3; font-size: 14px; }
-  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: #161b22; border-bottom: 1px solid #30363d; }
+         background: var(--bg); color: var(--text); font-size: 14px; transition: background .2s ease, color .2s ease; }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: var(--panel); border-bottom: 1px solid var(--border); }
   header h1 { font-size: 16px; margin: 0; font-weight: 600; }
-  .status { font-size: 12px; margin-left: auto; display: flex; gap: 12px; align-items: center; }
+  .status { font-size: 12px; margin-left: auto; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
   .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; }
-  .ok { background: #3fb950; } .bad { background: #f85149; } .warn { background: #d29922; }
-  .tabs { display: flex; gap: 4px; padding: 0 20px; background: #161b22; border-bottom: 1px solid #30363d; }
-  .tab { padding: 10px 16px; cursor: pointer; border: 1px solid transparent; border-bottom: none; color: #8b949e; }
-  .tab.active { color: #e6edf3; background: #0f1419; border-color: #30363d; border-radius: 6px 6px 0 0; margin-bottom: -1px; }
+  .ok { background: var(--ok); } .bad { background: var(--danger); } .warn { background: var(--warn); }
+  .tabs { display: flex; gap: 4px; padding: 0 20px; background: var(--panel); border-bottom: 1px solid var(--border); }
+  .tab { padding: 10px 16px; cursor: pointer; border: 1px solid transparent; border-bottom: none; color: var(--muted); }
+  .tab.active { color: var(--text); background: var(--bg); border-color: var(--border); border-radius: 6px 6px 0 0; margin-bottom: -1px; }
   .pane { display: none; padding: 20px; }
   .pane.active { display: block; }
-  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 18px; max-width: 720px; }
-  label { display: block; font-size: 12px; color: #8b949e; margin: 12px 0 4px; }
-  input, select, textarea { width: 100%; padding: 8px 10px; background: #0d1117; border: 1px solid #30363d;
-         border-radius: 6px; color: #e6edf3; font-size: 13px; font-family: inherit; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 18px; max-width: 720px; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 12px 0 4px; }
+  input, select, textarea { width: 100%; padding: 8px 10px; background: var(--input-bg); border: 1px solid var(--border);
+         border-radius: 6px; color: var(--text); font-size: 13px; font-family: inherit; }
   textarea { resize: vertical; min-height: 70px; }
   .row { display: flex; gap: 12px; } .row > div { flex: 1; }
-  button { background: #238636; color: #fff; border: none; padding: 9px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-top: 14px; }
-  button:hover { background: #2ea043; }
-  button.danger { background: #da3633; } button.danger:hover { background: #f85149; }
-  button.ghost { background: #21262d; border: 1px solid #30363d; color: #e6edf3; }
+  button { background: var(--btn); color: #fff; border: none; padding: 9px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; margin-top: 14px; }
+  button:hover { background: var(--btn-hover); }
+  button.danger { background: var(--danger-btn); } button.danger:hover { background: var(--danger); }
+  button.ghost { background: var(--border-strong); border: 1px solid var(--border); color: var(--text); }
   .msg { font-size: 12px; margin-top: 10px; padding: 8px 10px; border-radius: 6px; display: none; }
-  .msg.ok { display: block; background: #122d1c; color: #3fb950; border: 1px solid #1f6f3a; }
-  .msg.err { display: block; background: #3d1418; color: #f85149; border: 1px solid #6e2b2e; }
-  .msg.info { display: block; background: #122230; color: #58a6ff; border: 1px solid #1f4f6f; }
+  .msg.ok { display: block; background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
+  .msg.err { display: block; background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); }
+  .msg.info { display: block; background: var(--info-bg); color: var(--accent); border: 1px solid var(--accent-border); }
   .test-msg { display: inline-block; font-size: 12px; margin-left: 14px; padding: 3px 10px; border-radius: 6px; vertical-align: middle; }
-  .test-msg.ok { background: #122d1c; color: #3fb950; border: 1px solid #1f6f3a; }
-  .test-msg.err { background: #3d1418; color: #f85149; border: 1px solid #6e2b2e; }
-  .test-msg.run { background: #122230; color: #58a6ff; border: 1px solid #1f4f6f; }
+  .test-msg.ok { background: var(--ok-bg); color: var(--ok); border: 1px solid var(--ok-border); }
+  .test-msg.err { background: var(--danger-bg); color: var(--danger); border: 1px solid var(--danger-border); }
+  .test-msg.run { background: var(--info-bg); color: var(--accent); border: 1px solid var(--accent-border); }
   .toolbar { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px; }
   .toolbar > div { flex: 1; min-width: 160px; }
   .toolbar button { margin-top: 0; }
+  .table-wrap { width: 100%; overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
-  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #21262d; vertical-align: top; }
-  th { color: #8b949e; font-weight: 500; font-size: 12px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border-strong); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
   td.content { max-width: 420px; word-break: break-word; }
-  .tag { display: inline-block; background: #21262d; border: 1px solid #30363d; border-radius: 10px; padding: 1px 8px; font-size: 11px; margin: 1px 3px 1px 0; }
+  .tag { display: inline-block; background: var(--border-strong); border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; font-size: 11px; margin: 1px 3px 1px 0; }
   .actions { white-space: nowrap; }
   .actions button { margin: 0; padding: 4px 9px; font-size: 12px; }
-  .muted { color: #8b949e; font-size: 12px; }
-  .hlink { color: #58a6ff; cursor: pointer; }
+  .muted { color: var(--muted); font-size: 12px; }
+  .hlink { color: var(--accent); cursor: pointer; }
   .hlink:hover { text-decoration: underline; }
-  tr.rel { background: #161b22; box-shadow: inset 3px 0 0 #d29922; }
-  .reltag { display: inline-block; background: #3d2d12; border: 1px solid #6e4b1f; color: #e3b341; border-radius: 10px; padding: 0 8px; font-size: 11px; margin-right: 4px; }
-  .histbox { max-height: 240px; overflow: auto; border: 1px solid #30363d; border-radius: 6px; padding: 8px; margin-top: 4px; }
-  .histitem { padding: 6px 0; border-bottom: 1px solid #21262d; font-size: 12.5px; word-break: break-word; }
+  tr.rel { background: var(--panel); box-shadow: inset 3px 0 0 var(--warn); }
+  .reltag { display: inline-block; background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); border-radius: 10px; padding: 0 8px; font-size: 11px; margin-right: 4px; }
+  .histbox { max-height: 240px; overflow: auto; border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin-top: 4px; }
+  .histitem { padding: 6px 0; border-bottom: 1px solid var(--border-strong); font-size: 12.5px; word-break: break-word; }
   .histitem:last-child { border-bottom: none; }
-  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; }
+  .modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 50; }
   .modal.show { display: flex; }
   .modal .card { width: 560px; max-width: 92vw; }
   .modal .actions-row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
-  button.warnbtn { background: #9e6a03; } button.warnbtn:hover { background: #bb8009; }
-  .corrcount { color: #e3b341; font-weight: 600; }
-  .livecard { flex: 1; min-width: 120px; background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 12px 14px; }
-  .livecard .lv { font-size: 22px; font-weight: 700; color: #e6edf3; }
-  .livecard .ll { font-size: 12px; color: #8b949e; margin-top: 2px; }
+  button.warnbtn { background: var(--warn-btn); } button.warnbtn:hover { background: var(--warn-btn-hover); }
+  .corrcount { color: var(--warn-text); font-weight: 600; }
+  .livecard { flex: 1; min-width: 120px; background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .livecard .lv { font-size: 22px; font-weight: 700; color: var(--text); }
+  .livecard .ll { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  #theme-btn { margin: 0 0 0 10px; background: transparent; border: 1px solid var(--border); color: var(--text); padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  #theme-btn:hover { background: var(--border-strong); }
+  @media (max-width: 720px) {
+    header { flex-wrap: wrap; gap: 10px; }
+    .tabs { overflow-x: auto; }
+    .toolbar { flex-direction: column; } .toolbar > div { min-width: 0; }
+    .row { flex-direction: column; }
+    .card { max-width: 100%; }
+    .modal .card { width: 100%; max-width: 100vw; margin: 10px; }
+    #q-live { flex-direction: column; }
+    table { font-size: 12px; display: block; width: 100%; overflow-x: auto; }
+  }
 </style>
 </head>
 <body>
@@ -71,9 +100,10 @@
   <div class="status">
     <span id="st-qdrant"><span class="dot bad"></span>Qdrant 未连接</span>
     <span id="st-emb"><span class="dot warn"></span>向量未启用</span>
-    <span id="st-dedup" style="font-size:11px;color:#8b949e;margin-left:10px"></span>
-    <span id="st-auth" style="font-size:11px;color:#8b949e;margin-left:10px;cursor:pointer" onclick="clearAuthKey()" title="清除密钥"></span>
-    <span id="lang-btn" onclick="toggleLang()" style="font-size:11px;color:#8b949e;margin-left:10px;cursor:pointer;text-decoration:underline">EN</span>
+    <span id="st-dedup" style="font-size:11px;color:var(--muted);margin-left:10px"></span>
+    <span id="st-auth" style="font-size:11px;color:var(--muted);margin-left:10px;cursor:pointer" onclick="clearAuthKey()" title="清除密钥"></span>
+    <span id="lang-btn" onclick="toggleLang()" style="font-size:11px;color:var(--muted);margin-left:10px;cursor:pointer;text-decoration:underline">EN</span>
+    <span id="theme-btn" onclick="toggleTheme()" style="font-size:11px;color:var(--muted);margin-left:10px;cursor:pointer;text-decoration:underline">深色</span>
   </div>
 </header>
 
@@ -91,16 +121,16 @@
   <div class="toolbar">
     <div><label data-i18n="el-3">搜索内容 (留空=列出全部)</label><input id="q" placeholder="例如：会议记录" /></div>
     <div style="flex:0 0 140px"><label data-i18n="el-4">检索模式</label>
-      <select id="mode"><option value="keyword">关键词</option><option value="semantic">语义</option><option value="hybrid">混合</option></select></div>
+      <select id="mode"><option value="keyword" data-i18n="opt-mode-keyword">关键词</option><option value="semantic" data-i18n="opt-mode-semantic">语义</option><option value="hybrid" data-i18n="opt-mode-hybrid">混合</option></select></div>
     <div style="flex:0 0 100px"><label data-i18n="el-5">数量</label><input id="limit" type="number" value="50" /></div>
     <div style="flex:0 0 150px"><label data-i18n="el-6">起始时间 (from)</label><input id="from" type="date" /></div>
     <div style="flex:0 0 150px"><label data-i18n="el-7">结束时间 (to)</label><input id="to" type="date" /></div>
     <div style="flex:0 0 160px"><label data-i18n="el-8">事实类型 (type)</label><input id="ftype" placeholder="如 preference（留空=全部）" /></div>
     <div style="flex:0 0 130px"><label data-i18n="el-9">最低置信度</label><input id="fconf" type="number" step="0.05" min="0" max="1" placeholder="0-1" /></div>
-    <div style="flex:0 0 160px"><label data-i18n="el-10">分类 (category)</label><select id="fcat"><option value="">全部</option><option value="semantic">semantic</option><option value="episodic">episodic</option><option value="procedural">procedural</option></select></div>
-    <div style="flex:0 0 170px"><label data-i18n="el-11">记忆类型 (memory_type)</label><select id="fmem"><option value="">全部</option><option value="user">user（用户画像）</option><option value="agent">agent（Agent 自身）</option><option value="session">session（会话临时）</option></select></div>
+    <div style="flex:0 0 160px"><label data-i18n="el-10">分类 (category)</label><select id="fcat"><option value="" data-i18n="opt-all">全部</option><option value="semantic">semantic</option><option value="episodic">episodic</option><option value="procedural">procedural</option></select></div>
+    <div style="flex:0 0 170px"><label data-i18n="el-11">记忆类型 (memory_type)</label><select id="fmem"><option value="" data-i18n="opt-all">全部</option><option value="user" data-i18n="opt-user">user（用户画像）</option><option value="agent" data-i18n="opt-agent">agent（Agent 自身）</option><option value="session" data-i18n="opt-session">session（会话临时）</option></select></div>
     <div style="flex:0 0 150px"><label data-i18n="el-12">项目 (留空=全部)</label><input id="fproj" placeholder="如 payment" /></div>
-    <div style="flex:0 0 auto"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:#8b949e"><input type="checkbox" id="frel" checked style="width:auto;margin:0" />包含关联项目</label></div>
+    <div style="flex:0 0 auto"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;color:var(--muted)"><input type="checkbox" id="frel" checked style="width:auto;margin:0" /><span data-i18n="cfg-frel">包含关联项目</span></label></div>
     <div style="flex:0 0 auto"><button onclick="runSearch()" data-i18n="el-13">搜索</button></div>
   </div>
   <div id="data-msg"></div>
@@ -121,7 +151,7 @@
     </div>
     <div class="row">
       <div><label data-i18n="el-32">关联强度</label>
-        <select id="lk-strength"><option value="1">强 (1.0)</option><option value="0.6" selected>中 (0.6)</option><option value="0.3">弱 (0.3)</option></select>
+        <select id="lk-strength"><option value="1" data-i18n="opt-strong">强 (1.0)</option><option value="0.6" selected data-i18n="opt-mid">中 (0.6)</option><option value="0.3" data-i18n="opt-weak">弱 (0.3)</option></select>
       </div>
       <div><label data-i18n="el-33">备注</label><input id="lk-note" placeholder="如 同属支付域" /></div>
     </div>
@@ -151,22 +181,22 @@
     <div><label data-i18n="el-57">API Key（云端才填，本地留空）</label><input id="c-emb-key" type="password" placeholder="云端 Embedding 的 Bearer Token；本地 Ollama 留空" /></div>
     <div style="margin-top:8px"><button class="ghost" onclick="testBackend('embedding')" data-i18n="btn-test-emb">测试嵌入模型</button><span id="t-embedding" class="test-msg"></span></div>
     <h3 data-i18n="el-48">记忆去重 / 合并</h3>
-    <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:12px 0 4px">
-      <input type="checkbox" id="c-dedup" style="width:auto" /> 启用记忆合并（相似内容自动合并，避免重复）
+    <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:12px 0 4px">
+      <input type="checkbox" id="c-dedup" style="width:auto" /> <span data-i18n="cfg-dedup">启用记忆合并（相似内容自动合并，避免重复）</span>
     </label>
     <div style="max-width:200px"><label data-i18n="el-49">合并相似度阈值 (0.7~1.0)</label><input id="c-dedup-th" type="number" step="0.01" min="0.7" max="1.0" value="0.92" /></div>
     <h3 data-i18n="el-50">时序感知</h3>
-    <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:12px 0 4px">
-      <input type="checkbox" id="c-recency" style="width:auto" /> 启用检索时效加权（越近的记忆得分越高）
+    <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:12px 0 4px">
+      <input type="checkbox" id="c-recency" style="width:auto" /> <span data-i18n="cfg-recency">启用检索时效加权（越近的记忆得分越高）</span>
     </label>
     <div style="max-width:200px"><label data-i18n="el-51">时效半衰期 (天)</label><input id="c-recency-hl" type="number" step="1" min="1" value="30" /></div>
     <div style="max-width:200px"><label data-i18n="el-52">记忆过期天数 (0=不过期)</label><input id="c-expiry" type="number" step="1" min="0" value="0" /></div>
     <div style="max-width:240px"><label data-i18n="el-53">生命周期策略</label>
-      <select id="c-lifecycle"><option value="none">none（不自动过期）</option><option value="expire">expire（到期清理）</option></select></div>
+      <select id="c-lifecycle"><option value="none" data-i18n="opt-none-note">none（不自动过期）</option><option value="expire" data-i18n="opt-expire">expire（到期清理）</option></select></div>
     <h3 data-i18n="el-54">自动捕获</h3>
     <p class="muted" style="margin:4px 0" data-i18n="el-55">把原始对话/文本自动提炼成记忆。配 LLM 走智能提取，否则启发式按句切分去重入库。所有捕获项打 auto-captured 标签。</p>
-    <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:8px 0 4px">
-      <input type="checkbox" id="c-llm" style="width:auto" /> 启用 LLM 智能提取（需填写下方 chat 端点）
+    <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:8px 0 4px">
+      <input type="checkbox" id="c-llm" style="width:auto" /> <span data-i18n="cfg-llm">启用 LLM 智能提取（需填写下方 chat 端点）</span>
     </label>
     <p class="muted" style="margin:8px 0 4px" data-i18n="el-56">捕获 LLM 支持本地（Ollama，Key 留空）或云端（DeepSeek/OpenAI/硅基流动，填端点 + Key）。</p>
     <div class="row">
@@ -175,8 +205,8 @@
     </div>
     <div><label data-i18n="el-47">API Key（云端才填，本地留空）</label><input id="c-llm-key" type="password" placeholder="云端 chat 的 Bearer Token；本地 Ollama 留空" /></div>
     <div style="margin-top:8px"><button class="ghost" onclick="testBackend('llm')" data-i18n="btn-test-llm">测试捕获 LLM</button><span id="t-llm" class="test-msg"></span></div>
-    <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:12px 0 4px">
-      <input type="checkbox" id="c-watch" style="width:auto" /> 启用文件/目录监听（tail 新增内容自动捕获）
+    <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:12px 0 4px">
+      <input type="checkbox" id="c-watch" style="width:auto" /> <span data-i18n="cfg-watch">启用文件/目录监听（tail 新增内容自动捕获）</span>
     </label>
     <div><label data-i18n="el-58">监听路径（文件或目录，.log/.txt/.md/.jsonl）</label><input id="c-watch-path" placeholder="/var/log/app.log 或 /data/transcripts" /></div>
     <div class="row">
@@ -184,37 +214,37 @@
       <div style="max-width:220px"><label data-i18n="el-60">单次最多入库条数</label><input id="c-max-per" type="number" step="1" min="1" value="20" /></div>
     </div>
     <div><label data-i18n="el-61">关键词/正则白名单（留空=全部捕获）</label><input id="c-kw" placeholder="例如：决定|记住|偏好|规范" /></div>
-    <div style="border:1px solid #1f4f6f;border-radius:8px;padding:10px;margin:10px 0;background:#0d1b26">
-      <div style="font-weight:600;color:#58a6ff;margin-bottom:6px" data-i18n="el-62">事实抽取管线 (v1.4.0)</div>
-      <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:6px 0">
-        <input type="checkbox" id="c-reconcile" style="width:auto" /> 启用冲突检测与合并（相似记忆让 LLM 判 相同/矛盾/补充，避免重复堆砌）
+    <div style="border:1px solid var(--accent-border);border-radius:8px;padding:10px;margin:10px 0;background:var(--accent-bg)">
+      <div style="font-weight:600;color:var(--accent);margin-bottom:6px" data-i18n="el-62">事实抽取管线 (v1.4.0)</div>
+      <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
+        <input type="checkbox" id="c-reconcile" style="width:auto" /> <span data-i18n="cfg-reconcile">启用冲突检测与合并（相似记忆让 LLM 判 相同/矛盾/补充，避免重复堆砌）</span>
       </label>
-      <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:6px 0">
-        <input type="checkbox" id="c-auto-filter" style="width:auto" /> 捕获前触发判定（先让 LLM 判断是否值得记，省 token）
+      <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
+        <input type="checkbox" id="c-auto-filter" style="width:auto" /> <span data-i18n="cfg-auto-filter">捕获前触发判定（先让 LLM 判断是否值得记，省 token）</span>
       </label>
       <div class="row">
         <div style="max-width:360px"><label data-i18n="el-63">事实类型本体 (JSON 数组)</label><input id="c-fact-types" placeholder='["preference","decision","convention","project_fact","anti_pattern","person","tooling","temporal"]' /></div>
         <div style="max-width:200px"><label data-i18n="el-64">最低置信度 (0-1)</label><input id="c-fact-conf" type="number" step="0.05" min="0" max="1" value="0.5" /></div>
       </div>
     </div>
-    <div style="border:1px solid #1f4f6f;border-radius:8px;padding:10px;margin:10px 0;background:#0d1b26">
-      <div style="font-weight:600;color:#58a6ff;margin-bottom:6px" data-i18n="el-65">记忆分层与治理 (v1.5.0)</div>
+    <div style="border:1px solid var(--accent-border);border-radius:8px;padding:10px;margin:10px 0;background:var(--accent-bg)">
+      <div style="font-weight:600;color:var(--accent);margin-bottom:6px" data-i18n="el-65">记忆分层与治理 (v1.5.0)</div>
       <div class="row">
         <div style="max-width:220px"><label data-i18n="el-66">实体链接加权 (0-1)</label><input id="c-entity-boost" type="number" step="0.05" min="0" max="1" value="0.15" /></div>
         <div style="max-width:220px"><label data-i18n="el-67">Session 过期小时 (0=关)</label><input id="c-session-ttl" type="number" step="1" min="0" value="0" /></div>
       </div>
-      <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:6px 0">
-        <input type="checkbox" id="c-source-trust" style="width:auto" /> 来源信任加权（human&gt;agent&gt;tool&gt;system，检索时排序）
+      <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
+        <input type="checkbox" id="c-source-trust" style="width:auto" /> <span data-i18n="cfg-source-trust">来源信任加权（human&gt;agent&gt;tool&gt;system，检索时排序）</span>
       </label>
-      <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:6px 0">
-        <input type="checkbox" id="c-preserve-conflict" style="width:auto" /> 时序 ADD-only（冲突事实不覆盖旧值，新建并保留演变轨迹）
+      <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
+        <input type="checkbox" id="c-preserve-conflict" style="width:auto" /> <span data-i18n="cfg-preserve-conflict">时序 ADD-only（冲突事实不覆盖旧值，新建并保留演变轨迹）</span>
       </label>
       <div style="max-width:420px"><label data-i18n="el-68">来源信任权重 (JSON)</label><input id="c-source-weights" placeholder='{"human":1.0,"agent":0.85,"tool":0.7,"system":0.6}' /></div>
     </div>
     <h3 data-i18n="el-69">知识图谱</h3>
     <p class="muted" style="margin:4px 0" data-i18n="el-70">写入/编辑记忆时用 LLM 抽取实体与关系，存入 entities/relations，可在「知识图谱」页浏览。无 LLM 时不抽取。抽取质量取决于模型，minicpm5-1b 对嵌套图 schema 不稳定，建议 kg_model 用更强模型。</p>
-    <label style="display:flex;align-items:center;gap:8px;color:#e6edf3;font-size:13px;margin:8px 0 4px">
-      <input type="checkbox" id="c-kg" style="width:auto" /> 启用知识图谱（抽取实体与关系）
+    <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:8px 0 4px">
+      <input type="checkbox" id="c-kg" style="width:auto" /> <span data-i18n="cfg-kg">启用知识图谱（抽取实体与关系）</span>
     </label>
     <p class="muted" style="margin:8px 0 4px" data-i18n="el-71">图谱抽取可独立指向云端：填 kg_url + kg_api_key 即走云；留空则复用上面「自动捕获」的 LLM 端点（捕获与图谱可各自本地/云端）。</p>
     <div class="row">
@@ -237,12 +267,12 @@
     <h3 style="margin-top:0" data-i18n="sect-advanced">高级配置（v1.14.0+）</h3>
     <p class="muted" style="margin:4px 0" data-i18n="el-77">MMR 多样性、Webhook 推送、Reranker 精排、API 鉴权密钥等。</p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div><input type="checkbox" id="c-mmr" style="width:auto" /> 多样性重排 (MMR)</div>
+      <div><input type="checkbox" id="c-mmr" style="width:auto" /> <span data-i18n="cfg-mmr">多样性重排 (MMR)</span></div>
       <div style="max-width:150px"><label data-i18n="el-78">MMR λ (0=纯语义 1=纯多样)</label><input id="c-mmr-lambda" type="number" step="0.05" min="0" max="1" value="0.3" /></div>
-      <div><input type="checkbox" id="c-salience" style="width:auto" /> 强化评分 (salience)</div>
-      <div><input type="checkbox" id="c-related-proj" style="width:auto" /> 跨项目记忆关联</div>
-      <div><input type="checkbox" id="c-auto-compress" style="width:auto" /> 自动压缩 (consolidate)</div>
-      <div><input type="checkbox" id="c-correct-auto" style="width:auto" /> 自动纠正检测</div>
+      <div><input type="checkbox" id="c-salience" style="width:auto" /> <span data-i18n="cfg-salience">强化评分 (salience)</span></div>
+      <div><input type="checkbox" id="c-related-proj" style="width:auto" /> <span data-i18n="cfg-related-proj">跨项目记忆关联</span></div>
+      <div><input type="checkbox" id="c-auto-compress" style="width:auto" /> <span data-i18n="cfg-auto-compress">自动压缩 (consolidate)</span></div>
+      <div><input type="checkbox" id="c-correct-auto" style="width:auto" /> <span data-i18n="cfg-correct-auto">自动纠正检测</span></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
       <div><label data-i18n="el-79">Reranker 端点</label><input id="c-reranker-url" placeholder="留空=不用 reranker" /></div>
@@ -255,20 +285,20 @@
     <div style="margin-top:8px">
       <div><label data-i18n="el-83">Webhook 推送 URL (逗号分隔多个)</label><input id="c-webhook-urls" placeholder="https://hooks.example.com/webhook" /></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px">
-        <div><input type="checkbox" id="c-webhook" style="width:auto" /> 启用 Webhook 推送</div>
+        <div><input type="checkbox" id="c-webhook" style="width:auto" /> <span data-i18n="cfg-webhook">启用 Webhook 推送</span></div>
         <div style="max-width:150px"><label data-i18n="el-84">超时 (ms)</label><input id="c-webhook-timeout" type="number" step="100" min="1000" value="5000" /></div>
       </div>
       <div style="margin-top:6px"><label data-i18n="el-85">Webhook 签名密钥</label><input id="c-webhook-secret" type="password" placeholder="留空=不签名" /></div>
       <div style="margin-top:6px"><label data-i18n="el-86">API 鉴权密钥 (JSON 数组，如 ["key1","key2"])</label><input id="c-api-keys" placeholder='[] = 不启用鉴权' /></div>
     </div>
     <div style="margin-top:8px">
-      <span class="muted" style="font-size:12px">生命���期策略：</span>
+      <span class="muted" style="font-size:12px" data-i18n="lbl-lifecycle">生命周期策略：</span>
       <select id="c-lifecycle" style="margin-left:6px">
-        <option value="none">不过期</option><option value="ttl">按过期时间</option><option value="adaptive">自适应</option>
+        <option value="none" data-i18n="opt-life-none">不过期</option><option value="ttl" data-i18n="opt-life-ttl">按过期时间</option><option value="adaptive" data-i18n="opt-life-adap">自适应</option>
       </select>
-      <span class="muted" style="font-size:12px;margin-left:16px">事实抽取版本：</span>
+      <span class="muted" style="font-size:12px;margin-left:16px" data-i18n="lbl-factver">事实抽取版本：</span>
       <select id="c-extract-ver" style="margin-left:6px">
-        <option value="v2">v2（当前）</option><option value="v1">v1（兼容旧流程）</option>
+        <option value="v2" data-i18n="opt-fact-v2">v2（当前）</option><option value="v1" data-i18n="opt-fact-v1">v1（兼容旧流程）</option>
       </select>
     </div>
   </div>  <div class="card" style="margin-top:18px">
@@ -302,7 +332,7 @@
       <div style="flex:0 0 auto"><button class="ghost" onclick="gReset()" data-i18n="el-98">清空</button></div>
     </div>
     <div id="g-msg" class="muted" style="margin:6px 0"></div>
-    <svg id="g-svg" style="width:100%;height:520px;background:#0d1117;border:1px solid #30363d;border-radius:8px"></svg>
+    <svg id="g-svg" style="width:100%;height:520px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px"></svg>
     <div id="g-legend" class="muted" style="margin-top:6px"></div>
   </div>
   <div class="card" style="max-width:100%;margin-top:18px">
@@ -314,7 +344,7 @@
       <div style="flex:0 0 auto"><button class="ghost" onclick="kgReindex()" data-i18n="el-103">重建索引(FTS+图谱)</button></div>
     </div>
     <div id="kg-msg" class="muted" style="margin:6px 0"></div>
-    <svg id="kg-svg" style="width:100%;height:460px;background:#0d1117;border:1px solid #30363d;border-radius:8px"></svg>
+    <svg id="kg-svg" style="width:100%;height:460px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px"></svg>
     <div id="kg-legend" class="muted" style="margin-top:6px"></div>
   </div>
 </div>
@@ -341,7 +371,40 @@
     <table id="wh-table"><thead><tr><th data-i18n="el-117">时间</th><th data-i18n="el-118">事件</th><th data-i18n="el-119">目标</th><th data-i18n="el-120">状态</th></tr></thead><tbody id="wh-tbody"><tr><td colspan="4" class="muted" data-i18n="el-121">加载中…</td></tr></tbody></table>
     <div style="margin-top:8px"><button class="ghost" onclick="loadWebhookRecent()" data-i18n="el-122">刷新</button></div>
   </div>
+
+  <!-- 智能深化 (T9) -->
+  <div class="card" style="margin-top:18px">
+    <h3 style="margin-top:0"><span data-i18n="sect-ins-dup">冲突 / 重复检测</span></h3>
+    <p class="muted" style="margin:4px 0" data-i18n="el-ins-dup">基于向量余弦（或内容 jaccard）扫描语义相近的记忆对，辅助合并清理。</p>
+    <div class="row" style="align-items:center;gap:12px">
+      <div style="flex:0 0 150px"><label data-i18n="el-ins-th">相似度阈值</label><input id="ins-th" type="number" step="0.01" min="0" max="1" value="0.92" style="width:90px" /></div>
+      <button onclick="loadDuplicates()" data-i18n="btn-run">分析</button>
+      <span id="ins-dup-sum" class="msg"></span>
+    </div>
+    <div id="ins-dup-body" style="margin-top:10px"></div>
   </div>
+
+  <div class="card" style="margin-top:18px">
+    <h3 style="margin-top:0"><span data-i18n="sect-ins-cluster">标签聚类</span></h3>
+    <p class="muted" style="margin:4px 0" data-i18n="el-ins-cluster">标签频率与共现关系，自动归并出主题簇。</p>
+    <div class="row" style="align-items:center;gap:12px">
+      <button onclick="loadCluster()" data-i18n="btn-run">分析</button>
+      <span id="ins-cluster-sum" class="msg"></span>
+    </div>
+    <div id="ins-cluster-body" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card" style="margin-top:18px">
+    <h3 style="margin-top:0"><span data-i18n="sect-ins-forget">遗忘曲线</span></h3>
+    <p class="muted" style="margin:4px 0" data-i18n="el-ins-forget">基于间隔重复稳定性（SM-2），预测不复习时的记忆留存衰减与待复习紧迫度。</p>
+    <div class="row" style="align-items:center;gap:12px">
+      <button onclick="loadForget()" data-i18n="btn-run">分析</button>
+      <span id="ins-forget-sum" class="msg"></span>
+    </div>
+    <div id="ins-forget-body" style="margin-top:10px"></div>
+  </div>
+
+</div>
 </div>
 
 <!-- 编辑弹窗 -->
@@ -402,14 +465,14 @@
 
 <!-- 登录弹窗（公网部署时 api_keys 非空会 401，需在此输入 key） -->
 <div id="login-overlay" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;">
-  <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;padding:32px;max-width:380px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
-    <h2 style="margin:0 0 8px 0;color:#e6edf3" data-i18n="auth-login-title">鉴权需要</h2>
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:32px;max-width:380px;text-align:center;box-shadow:0 8px 32px rgba(0,0,0,0.4);">
+    <h2 style="margin:0 0 8px 0;color:var(--text)" data-i18n="auth-login-title">鉴权需要</h2>
     <p class="muted" style="margin:0 0 16px 0;font-size:13px" data-i18n="el-141">请输入你在 config.json 的 api_keys 中配置的密钥</p>
     <div style="position:relative;margin-bottom:12px">
-      <input id="login-key" type="password" data-i18n="auth-placeholder" placeholder="输入密钥" style="width:100%;padding:10px 36px 10px 12px;border:1px solid #30363d;border-radius:8px;background:#0d1117;color:#e6edf3;box-sizing:border-box" />
-      <span id="login-eye" onclick="toggleKeyVis()" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:#8b949e;font-size:13px;user-select:none">显示</span>
+      <input id="login-key" type="password" data-i18n="auth-placeholder" placeholder="输入密钥" style="width:100%;padding:10px 36px 10px 12px;border:1px solid var(--border);border-radius:8px;background:var(--input-bg);color:var(--text);box-sizing:border-box" />
+      <span id="login-eye" onclick="toggleKeyVis()" data-i18n="lbl-login-eye" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:13px;user-select:none">显示</span>
     </div>
-    <button id="login-btn" onclick="login()" style="width:100%;padding:10px;border:none;border-radius:8px;background:#238636;color:#fff;cursor:pointer;font-size:14px" data-i18n="el-142">确认</button>
+    <button id="login-btn" onclick="login()" style="width:100%;padding:10px;border:none;border-radius:8px;background:var(--btn);color:#fff;cursor:pointer;font-size:14px" data-i18n="el-142">确认</button>
     <p id="login-msg" class="muted" style="font-size:12px;margin-top:8px"></p>
   </div>
 </div>
@@ -435,7 +498,64 @@ const __lang = {
     'st-db-ok':'Qdrant 已连接', 'st-db-sqlite':'SQLite 降级（无 Qdrant）', 'st-db-bad':'Qdrant 未连接',
     'st-emb-on':'向量已启用', 'st-emb-off':'向量未启用',
     'lb-exact':'精确', 'lb-vector':'向量', 'lb-err':'去重错误',
-    'test-running':'测试中…', 'test-fail':'请求失败', 'sect-quality':'质量监控', 'sect-database':'数据库与嵌入', 'sect-llm-capture':'LLM 与捕获', 'sect-kg':'知识图谱',
+    'test-running':'测试中…', 'test-fail':'请求失败', 'sect-quality':'质量监控', 'sect-database':'数据库与嵌入', 'sect-llm-capture':'LLM 与捕获',     'sect-kg':'知识图谱', 'sect-insight':'智能深化', 'sect-ins-dup':'冲突 / 重复检测', 'sect-ins-cluster':'标签聚类', 'sect-ins-forget':'遗忘曲线', 'el-ins-dup':'基于向量余弦（或内容 jaccard）扫描语义相近的记忆对，辅助合并清理。', 'el-ins-cluster':'标签频率与共现关系，自动归并出主题簇。', 'el-ins-forget':'基于间隔重复稳定性（SM-2），预测不复习时的记忆留存衰减与待复习紧迫度。', 'el-ins-th':'相似度阈值', 'ins-method':'方法', 'ins-th-label':'阈值', 'ins-pair-count':'重复对', 'ins-total':'记忆总数', 'ins-unique-tags':'唯一标签', 'ins-clusters':'主题簇', 'ins-tag-freq':'标签频率', 'ins-clusters-h':'主题簇（共现≥2）', 'ins-no-cluster':'暂无稳定共现簇。', 'ins-no-dup':'未检测到重复/冲突记忆。', 'ins-due':'待复习', 'ins-scheduled':'已排期', 'ins-med-stab':'中位稳定性', 'ins-with-sched':'有排期数', 'ins-ret-now':'当前留存分布', 'ins-curve-cap':'若不复习，平均留存衰减（未来 30 天）', 'ins-sim':'相似度', 'btn-run':'分析',
+    // --- T7 动态字符串(状态/提示/确认) ---
+    'st-offline':'服务离线',
+    'msg-searching':'查询中…', 'msg-no-result':'无结果', 'msg-count':'共 {n} 条',
+    'msg-query-fail':'查询失败', 'confirm-del':'确认删除该记忆？', 'msg-del-fail':'删除失败',
+    'msg-saving':'保存中，即将重启服务…', 'msg-saved-restart':'配置已保存，服务重启中（页面将自动重连）…',
+    'msg-restarted-ok':'✅ 服务已重启，配置生效。', 'msg-restart-slow':'重启较慢，请稍后刷新页面确认。',
+    'msg-save-fail':'保存失败', 'msg-req-fail':'❌ 请求失败',
+    'msg-cap-empty':'请先粘贴待捕获文本', 'msg-capturing':'捕获中…', 'msg-cap-fail':'捕获失败',
+    'msg-cap-done':'已捕获 {c} 条，跳过 {s} 条（模式：{m}）', 'msg-cap-err':'捕获出错',
+    'msg-testing':'正在测试 Qdrant 与 Embedding 连接…', 'msg-test-fail':'测试失败',
+    'msg-hist-load-fail':'读取历史失败', 'msg-link-req':'源/目标项目必填',
+    'msg-link-saved':'已保存关联（强度 {s}）', 'msg-fail':'失败',
+    'confirm-del-link':'删除该关联？', 'msg-src-load-fail':'读取溯源失败',
+    'msg-help-fail':'帮助加载失败', 'msg-ent-req':'请输入实体名', 'msg-loading':'加载中…',
+    'msg-ent-notfound':'未找到包含「{e}」的记忆或图谱数据',
+    'msg-graph-stat':'节点 {nodes}，关系 {links}（来源记忆 {mems}）', 'msg-load-fail':'加载失败',
+    'msg-types':'类型：', 'msg-kg-empty':'该范围暂无聚合实体（先添加带实体的记忆，或点击「重建索引」）',
+    'msg-kg-stat':'实体 {n}{rel}（项目：{proj}）',
+    'msg-rebuild-ing':'重建索引中（FTS5 + 聚合图谱），可能需要数秒…',
+    'msg-rebuild-done':'重建完成：FTS 索引 {fts} 条，图谱实体 {ents}，关系 {rels}',
+    'msg-rebuild-fail':'重建失败', 'msg-updated':'已更新',
+    'msg-co-req':'请填写纠正反馈内容', 'msg-applying':'应用中…',
+    'msg-co-ok':'✅ 已纠正（correction_count={c}，confidence={conf}）',
+    'msg-co-notfound':'⚠️ 未找到可纠正的记忆', 'msg-co-fail':'纠正失败', 'msg-none':'（无）',
+    // --- 配置内联标签 ---
+    'cfg-dedup':'启用记忆合并（相似内容自动合并，避免重复）',
+    'cfg-recency':'启用检索时效加权（越近的记忆得分越高）',
+    'cfg-llm':'启用 LLM 智能提取（需填写下方 chat 端点）',
+    'cfg-watch':'启用文件/目录监听（tail 新增内容自动捕获）',
+    'cfg-reconcile':'启用冲突检测与合并（相似记忆让 LLM 判 相同/矛盾/补充，避免重复堆砌）',
+    'cfg-auto-filter':'捕获前触发判定（先让 LLM 判断是否值得记，省 token）',
+    'cfg-source-trust':'来源信任加权（human&gt;agent&gt;tool&gt;system，检索时排序）',
+    'cfg-preserve-conflict':'时序 ADD-only（冲突事实不覆盖旧值，新建并保留演变轨迹）',
+    'cfg-kg':'启用知识图谱（抽取实体与关系）', 'cfg-mmr':'多样性重排 (MMR)',
+    'cfg-salience':'强化评分 (salience)', 'cfg-related-proj':'跨项目记忆关联',
+    'cfg-auto-compress':'自动压缩 (consolidate)', 'cfg-correct-auto':'自动纠正检测',
+    'cfg-webhook':'启用 Webhook 推送', 'cfg-frel':'包含关联项目',
+    'lbl-login-eye':'显示', 'lbl-lifecycle':'生命周期策略：', 'lbl-factver':'事实抽取版本：',
+    // --- 下拉选项 ---
+    'opt-none-note':'none（不自动过期）', 'opt-expire':'expire（到期清理）', 'opt-adaptive':'自适应',
+    'opt-strong':'强 (1.0)', 'opt-mid':'中 (0.6)', 'opt-weak':'弱 (0.3)',
+    'opt-life-none':'不过期', 'opt-life-ttl':'按过期时间', 'opt-life-adap':'自适应',
+    'opt-fact-v2':'v2（当前）', 'opt-fact-v1':'v1（兼容旧流程）',
+    'opt-all':'全部', 'opt-user':'user（用户画像）', 'opt-agent':'agent（Agent 自身）', 'opt-session':'session（会话临时）',
+    // --- 溯源标签 ---
+    'src-type':'来源类型', 'src-ref':'引用 ref', 'src-conv-id':'对话 ID', 'src-msg-id':'消息 ID',
+    'src-url':'来源 URL', 'src-file':'文件', 'src-captured-at':'捕获时间', 'src-trigger':'触发方式',
+    // --- 强度 ---
+    'str-strong':'强', 'str-mid':'中', 'str-weak':'弱',
+    // --- 连接测试结果 ---
+    'test-qdrant-ok':'Qdrant ✅ 已连接（集合 {c}，文档数 {d}）', 'test-qdrant-bad':'Qdrant ❌ {e}',
+    'test-emb-ok':'Embedding ✅ 模型 {m}，维度 {dims}，耗时 {ms}ms', 'test-emb-bad':'Embedding ❌ {e}',
+    'test-notconn':'未连接', 'test-unavail':'不可用',
+    // --- 其他界面串 ---
+    'opt-mode-keyword':'关键词', 'opt-mode-semantic':'语义', 'opt-mode-hybrid':'混合',
+    'qc-total':'总操作数', 'qc-errors':'错误数', 'qc-latency':'平均延迟', 'qc-errrate':'错误率',
+    'reltag-from':'来自关联项目（强度 {s}）', 'cap-merged':'[合并]',
   },
   en: {
     'tab-data':'Data', 'tab-config':'Config', 'tab-help':'Help', 'tab-graph':'Knowledge Graph', 'tab-links':'Project Links', 'tab-quality':'Quality',
@@ -452,7 +572,7 @@ const __lang = {
     'st-db-ok':'Qdrant Connected', 'st-db-sqlite':'SQLite Fallback', 'st-db-bad':'Qdrant Disconnected',
     'st-emb-on':'Embedding Enabled', 'st-emb-off':'Embedding Disabled',
     'lb-exact':'Exact', 'lb-vector':'Vector', 'lb-err':'Dedup Err',
-    'test-running':'Testing\u2026', 'test-fail':'Request failed', 'sect-quality':'Quality Monitor', 'sect-database':'Database & Embedding', 'sect-llm-capture':'LLM & Capture', 'sect-kg':'Knowledge Graph',
+    'test-running':'Testing\u2026', 'test-fail':'Request failed', 'sect-quality':'Quality Monitor', 'sect-database':'Database & Embedding', 'sect-llm-capture':'LLM & Capture', 'sect-kg':'Knowledge Graph', 'sect-insight':'Intelligence Deep-Dive', 'sect-ins-dup':'Conflict / Duplicate Detection', 'sect-ins-cluster':'Tag Clustering', 'sect-ins-forget':'Forgetting Curve', 'el-ins-dup':'Scans semantically near memory pairs via vector cosine (or content jaccard) to aid merging/cleanup.', 'el-ins-cluster':'Tag frequency and co-occurrence, auto-grouped into topic clusters.', 'el-ins-forget':'Projects memory retention decay and review urgency from spaced-repetition stability (SM-2).', 'el-ins-th':'Similarity threshold', 'ins-method':'Method', 'ins-th-label':'Threshold', 'ins-pair-count':'Dup pairs', 'ins-total':'Total memories', 'ins-unique-tags':'Unique tags', 'ins-clusters':'Clusters', 'ins-tag-freq':'Tag frequency', 'ins-clusters-h':'Clusters (co-occur >= 2)', 'ins-no-cluster':'No stable co-occurrence clusters yet.', 'ins-no-dup':'No duplicate/conflict memories detected.', 'ins-due':'Due for review', 'ins-scheduled':'Scheduled', 'ins-med-stab':'Median stability', 'ins-with-sched':'With schedule', 'ins-ret-now':'Current retention', 'ins-curve-cap':'Average retention decay if not reviewed (next 30 days)', 'ins-sim':'Similarity', 'btn-run':'Analyze',
 
     'el-1':'AI Memory Management',
     'el-2':'AI Memory Management',
@@ -627,13 +747,66 @@ const __lang = {
     'el-171':'No records',
     'el-172':'No records',
     'el-173':'No records',
+    // --- T7 dynamic strings ---
+    'st-offline':'Service offline',
+    'msg-searching':'Searching…', 'msg-no-result':'No results', 'msg-count':'{n} results',
+    'msg-query-fail':'Query failed', 'confirm-del':'Delete this memory?', 'msg-del-fail':'Delete failed',
+    'msg-saving':'Saving, restarting service…', 'msg-saved-restart':'Config saved, restarting service (auto-reconnect)…',
+    'msg-restarted-ok':'✅ Service restarted, config applied.', 'msg-restart-slow':'Restart is slow, refresh later to confirm.',
+    'msg-save-fail':'Save failed', 'msg-req-fail':'❌ Request failed',
+    'msg-cap-empty':'Paste text to capture first', 'msg-capturing':'Capturing…', 'msg-cap-fail':'Capture failed',
+    'msg-cap-done':'Captured {c}, skipped {s} (mode: {m})', 'msg-cap-err':'Capture error',
+    'msg-testing':'Testing Qdrant & Embedding…', 'msg-test-fail':'Test failed',
+    'msg-hist-load-fail':'Failed to load history', 'msg-link-req':'Source/target project required',
+    'msg-link-saved':'Link saved (strength {s})', 'msg-fail':'Failed',
+    'confirm-del-link':'Delete this link?', 'msg-src-load-fail':'Failed to load source',
+    'msg-help-fail':'Failed to load help', 'msg-ent-req':'Enter an entity name', 'msg-loading':'Loading…',
+    'msg-ent-notfound':'No memories or graph data containing "{e}"',
+    'msg-graph-stat':'Nodes {nodes}, links {links} (from {mems} memories)', 'msg-load-fail':'Load failed',
+    'msg-types':'Types: ', 'msg-kg-empty':'No aggregated entities in this range (add memories with entities, or click Rebuild Index)',
+    'msg-kg-stat':'Entities {n}{rel} (project: {proj})',
+    'msg-rebuild-ing':'Rebuilding index (FTS5 + aggregated graph), may take a few seconds…',
+    'msg-rebuild-done':'Rebuild done: FTS index {fts}, graph entities {ents}, relations {rels}',
+    'msg-rebuild-fail':'Rebuild failed', 'msg-updated':'Updated',
+    'msg-co-req':'Enter correction feedback', 'msg-applying':'Applying…',
+    'msg-co-ok':'✅ Corrected (correction_count={c}, confidence={conf})',
+    'msg-co-notfound':'⚠️ No correctable memory found', 'msg-co-fail':'Correction failed', 'msg-none':'(none)',
+    'cfg-dedup':'Enable memory merge (auto-merge similar content to avoid duplicates)',
+    'cfg-recency':'Enable recency weighting (recent memories score higher)',
+    'cfg-llm':'Enable LLM smart extraction (fill chat endpoint below)',
+    'cfg-watch':'Enable file/dir watch (auto-capture appended content)',
+    'cfg-reconcile':'Enable conflict detection & merge (LLM judges same/contradict/supplement)',
+    'cfg-auto-filter':'Pre-capture trigger (LLM decides if worth remembering, saves tokens)',
+    'cfg-source-trust':'Source trust weighting (human&gt;agent&gt;tool&gt;system, used in ranking)',
+    'cfg-preserve-conflict':'Temporal ADD-only (conflicts create new versions, preserve evolution)',
+    'cfg-kg':'Enable knowledge graph (extract entities & relations)', 'cfg-mmr':'Diversity rerank (MMR)',
+    'cfg-salience':'Reinforcement score (salience)', 'cfg-related-proj':'Cross-project memory links',
+    'cfg-auto-compress':'Auto-compress (consolidate)', 'cfg-correct-auto':'Auto-correction detection',
+    'cfg-webhook':'Enable webhook delivery', 'cfg-frel':'Include linked projects',
+    'lbl-login-eye':'Show', 'lbl-lifecycle':'Lifecycle policy: ', 'lbl-factver':'Fact extraction version: ',
+    'opt-none-note':'none (no auto-expiry)', 'opt-expire':'expire (cleanup on expiry)', 'opt-adaptive':'adaptive',
+    'opt-strong':'Strong (1.0)', 'opt-mid':'Medium (0.6)', 'opt-weak':'Weak (0.3)',
+    'opt-life-none':'No expiry', 'opt-life-ttl':'By expiry time', 'opt-life-adap':'Adaptive',
+    'opt-fact-v2':'v2 (current)', 'opt-fact-v1':'v1 (legacy)',
+    'opt-all':'All', 'opt-user':'user (user profile)', 'opt-agent':'agent (the agent itself)', 'opt-session':'session (temporary)',
+    'src-type':'Source type', 'src-ref':'Ref', 'src-conv-id':'Conversation ID', 'src-msg-id':'Message ID',
+    'src-url':'Source URL', 'src-file':'File', 'src-captured-at':'Captured at', 'src-trigger':'Trigger',
+    'str-strong':'Strong', 'str-mid':'Medium', 'str-weak':'Weak',
+    'test-qdrant-ok':'Qdrant ✅ connected (collection {c}, docs {d})', 'test-qdrant-bad':'Qdrant ❌ {e}',
+    'test-emb-ok':'Embedding ✅ model {m}, dims {dims}, {ms}ms', 'test-emb-bad':'Embedding ❌ {e}',
+    'test-notconn':'not connected', 'test-unavail':'unavailable',
+    'opt-mode-keyword':'Keyword', 'opt-mode-semantic':'Semantic', 'opt-mode-hybrid':'Hybrid',
+    'qc-total':'Total ops', 'qc-errors':'Errors', 'qc-latency':'Avg latency', 'qc-errrate':'Error rate',
+    'reltag-from':'From linked project (strength {s})', 'cap-merged':'[merged]',
   }
 };
-function t(key) {
+function t(key, vars) {
   const loc = __lang[getLocale()];
-  if (loc && loc[key] !== undefined) return loc[key];
-  const zh = __lang['zh'];
-  return (zh && zh[key] !== undefined) ? zh[key] : null;
+  let v = (loc && loc[key] !== undefined) ? loc[key] : null;
+  if (v == null) { const zh = __lang['zh']; v = (zh && zh[key] !== undefined) ? zh[key] : null; }
+  if (v == null) return null;
+  if (vars) v = String(v).replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? vars[k] : '{' + k + '}'));
+  return v;
 }
 function applyLang() {
   document.querySelectorAll('[data-i18n]').forEach(el => {
@@ -667,12 +840,43 @@ function applyLang() {
 function toggleLang() {
   setLocale(getLocale() === 'zh' ? 'en' : 'zh');
   applyLang();
+  applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
   // 帮助页的工具描述是按当前语言现场生成的，切换时需重新拉取以同步
   const helpTab = document.querySelector('.tab[data-pane="help"]');
   if (helpTab && helpTab.classList.contains('active')) loadDocs();
 }
 // 页面加载时应用已保存的语言偏好
 (function() { applyLang(); })();
+
+// ---- 主题切换（深色/浅色，localStorage 持久化） ----
+const _THEME_KEY = 'ai-memory-theme';
+function applyTheme(th) {
+  document.documentElement.setAttribute('data-theme', th);
+  const b = document.getElementById('theme-btn');
+  if (b) b.textContent = (th === 'light') ? (getLocale() === 'en' ? 'Light' : '浅色') : (getLocale() === 'en' ? 'Dark' : '深色');
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') || 'dark';
+  const next = cur === 'light' ? 'dark' : 'light';
+  try { localStorage.setItem(_THEME_KEY, next); } catch (e) {}
+  applyTheme(next);
+}
+(function() {
+  let t = 'dark';
+  try { t = localStorage.getItem(_THEME_KEY) || 'dark'; } catch (e) {}
+  applyTheme(t);
+})();
+
+// 动态插入的 [data-i18n] 元素（弹窗/表格/列表）在插入后也翻译（英文模式彻底双语）
+(function() {
+  const _obs = { childList: true, subtree: true };
+  const _mo = new MutationObserver(function() {
+    _mo.disconnect();
+    try { applyLang(); } finally { _mo.observe(document.body, _obs); }
+  });
+  _mo.observe(document.body, _obs);
+})();
+
 
 // ---- 鉴权：API key 管理（公网部署需要） ----
 const AUTH_KEY = 'ai-memory-admin-key';
@@ -748,14 +952,14 @@ function setStatus(h) {
   $('#st-dedup').textContent = t('lb-exact') + ':' + (dd.exact||0) + ' ' + t('lb-vector') + ':' + (dd.vector||0) + ' ' + t('lb-err') + ':' + (dd.err||0) + ' | embed:' + (es.embed||0) + ' fts:' + (es.fts||0) + ' kg:' + (es.kg||0) + ' webhook:' + (es.webhook||0) + ' bump:' + (es.bump||0) + ' changelog:' + (es.changelog||0) + ' cleanup:' + (es.cleanup||0) + ' capture:' + (es.capture||0) + ' backup:' + (es.backup||0) + ' config:' + (es.config||0) + ' other:' + (es.other||0);
   // 动态标题显示版本号
   if (h.version) { $('#header-title').textContent = t('hdr-title') + ' v' + h.version; }
-  // ���权状态
+  // 鉴权状态
   const ak = getAuthKey();
   $('#st-auth').textContent = ak ? ('🔑 ' + t('st-auth-logged')) : ('🔒 ' + t('st-auth-unlogged'));
 }
 
 async function health() {
   try { const r = await fetch('/api/health'); const j = await r.json(); setStatus(j); return j; }
-  catch (e) { $('#st-qdrant').innerHTML = '<span class="dot bad"></span>服务离线'; return null; }
+  catch (e) { $('#st-qdrant').innerHTML = '<span class="dot bad"></span>' + t('st-offline'); return null; }
 }
 setInterval(health, 8000); health();
 
@@ -781,12 +985,12 @@ async function runSearch() {
   if (fcat) url += '&category=' + encodeURIComponent(fcat);
   if (fmem) url += '&memory_type=' + encodeURIComponent(fmem);
   if (fconf) url += '&min_confidence=' + encodeURIComponent(fconf);
-  showMsg('#data-msg', '查询中…', 'info');
+  showMsg('#data-msg', t('msg-searching'), 'info');
   try {
     const r = await fetch(url); const j = await r.json();
     const tb = $('#tbl tbody'); tb.innerHTML = '';
-    if (!j.rows || !j.rows.length) { showMsg('#data-msg', '无结果', 'info'); return; }
-    showMsg('#data-msg', '共 ' + j.rows.length + ' 条', 'ok');
+    if (!j.rows || !j.rows.length) { showMsg('#data-msg', t('msg-no-result'), 'info'); return; }
+    showMsg('#data-msg', t('msg-count', { n: j.rows.length }), 'ok');
     j.rows.forEach(rw => {
       const tr = document.createElement('tr');
       if (rw.related_project) tr.className = 'rel';
@@ -795,7 +999,7 @@ async function runSearch() {
       const updated = (rw.updated_at||'').replace('T',' ').slice(0,19);
       const lastAcc = (rw.last_accessed_at||'').replace('T',' ').slice(0,19);
       const histCell = (rw.history && rw.history.length) ? '<a class="hlink" onclick="showHistory(\'' + rw.id + '\')" data-i18n="el-143">' + rw.history.length + ' 版</a>' : '-';
-      const relTag = rw.related_project ? '<span class="reltag" title="来自关联项目（强度 ' + (rw.relation_strength!=null?rw.relation_strength:'?') + '）' + (rw.relation_note?('：'+esc(rw.relation_note)):'') + '">↳ ' + esc(rw.related_project) + ' (' + strengthLabel(rw.relation_strength) + ')</span> ' : '';
+      const relTag = rw.related_project ? '<span class="reltag" title="' + t('reltag-from', { s: strengthLabel(rw.relation_strength) }) + (rw.relation_note?('：'+esc(rw.relation_note)):'') + '">↳ ' + esc(rw.related_project) + ' (' + strengthLabel(rw.relation_strength) + ')</span> ' : '';
       tr.innerHTML = '<td class="content">' + relTag + esc(rw.content) + '</td>' +
         '<td>' + esc(rw.project || '-') + '</td><td>' + esc(rw.session || '-') + '</td>' +
         '<td>' + tags + '</td>' +
@@ -816,15 +1020,15 @@ async function runSearch() {
       tb.appendChild(tr);
     });
   applyLang(); // 表格行动态注入的 data-i18n 也按当前语言渲染
-  } catch (e) { showMsg('#data-msg', '查询失败: ' + e.message, 'err'); }
+  } catch (e) { showMsg('#data-msg', t('msg-query-fail') + ': ' + e.message, 'err'); }
 }
 
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 
 async function del(id) {
-  if (!confirm('确认删除该记忆？')) return;
+  if (!confirm(t('confirm-del'))) return;
   const r = await fetch('/api/memories/' + encodeURIComponent(id), { method: 'DELETE' });
-  if (r.ok) runSearch(); else alert('删除失败');
+  if (r.ok) runSearch(); else alert(t('msg-del-fail'));
 }
 
 async function loadConfig() {
@@ -936,20 +1140,20 @@ async function saveConfig() {
     lifecycle_policy: $('#c-lifecycle').value,
     extract_version: $('#c-extract-ver').value,
   };
-  showMsg('#cfg-msg', '保存中，即将重启服务…', 'info');
+  showMsg('#cfg-msg', t('msg-saving'), 'info');
   const r = await fetch('/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
   const j = await r.json();
   if (j.ok && j.restarting) {
-    showMsg('#cfg-msg', '配置已保存，服务重启中（页面将自动重连）…', 'info');
+    showMsg('#cfg-msg', t('msg-saved-restart'), 'info');
     // 轮询等待恢复
     let tries = 0;
     const iv = setInterval(async () => {
       tries++;
       const h = await health();
-      if (h && h.qdrant_connected) { clearInterval(iv); showMsg('#cfg-msg', '✅ 服务已重启，配置生效。', 'ok'); }
-      else if (tries > 20) { clearInterval(iv); showMsg('#cfg-msg', '重启较慢，请稍后刷新页面确认。', 'info'); }
+      if (h && h.qdrant_connected) { clearInterval(iv); showMsg('#cfg-msg', t('msg-restarted-ok'), 'ok'); }
+      else if (tries > 20) { clearInterval(iv); showMsg('#cfg-msg', t('msg-restart-slow'), 'info'); }
     }, 1500);
-  } else { showMsg('#cfg-msg', '保存失败', 'err'); }
+  } else { showMsg('#cfg-msg', t('msg-save-fail'), 'err'); }
 }
 
 async function testBackend(type) {
@@ -981,37 +1185,37 @@ async function testBackend(type) {
     status.textContent = (d.ok ? '✅ ' : '❌ ') + (d.message || '') + (d.detail ? ('  — ' + d.detail) : '');
     status.className = 'test-msg ' + (d.ok ? 'ok' : 'err');
   } catch (e) {
-    status.textContent = '❌ 请求失败：' + e.message;
+    status.textContent = t('msg-req-fail') + '：' + e.message;
     status.className = 'test-msg err';
   }
 }
 
 async function runCapture() {
   const text = $('#cap-text').value.trim();
-  if (!text) { showMsg('#cap-msg', '请先粘贴待捕获文本', 'err'); return; }
+  if (!text) { showMsg('#cap-msg', t('msg-cap-empty'), 'err'); return; }
   const tags = $('#cap-tags').value.split(',').map(s => s.trim()).filter(Boolean);
   const body = { text, user: $('#cap-user').value || 'auto', project: $('#cap-project').value || 'capture_test', tags };
-  showMsg('#cap-msg', '捕获中…', 'info');
+  showMsg('#cap-msg', t('msg-capturing'), 'info');
   try {
     const r = await fetch('/api/capture', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
     const j = await r.json();
-    if (!r.ok) { showMsg('#cap-msg', '捕获失败: ' + JSON.stringify(j), 'err'); return; }
-    showMsg('#cap-msg', '已捕获 ' + (j.captured||0) + ' 条，跳过 ' + (j.skipped||0) + ' 条（模式：' + (j.mode||'?') + '）', 'ok');
-    const items = (j.items||[]).map(it => '• ' + (it.merged ? '[合并] ' : '') + it.content).join('\n');
-    $('#cap-result').textContent = items || '（无）';
-  } catch (e) { showMsg('#cap-msg', '捕获出错: ' + e.message, 'err'); }
+    if (!r.ok) { showMsg('#cap-msg', t('msg-cap-fail') + ': ' + JSON.stringify(j), 'err'); return; }
+    showMsg('#cap-msg', t('msg-cap-done', { c: (j.captured||0), s: (j.skipped||0), m: (j.mode||'?') }), 'ok');
+    const items = (j.items||[]).map(it => '• ' + (it.merged ? t('cap-merged') + ' ' : '') + it.content).join('\n');
+    $('#cap-result').textContent = items || t('msg-none');
+  } catch (e) { showMsg('#cap-msg', t('msg-cap-err') + ': ' + e.message, 'err'); }
 }
 
 async function diagnose() {
-  showMsg('#cfg-msg', '正在测试 Qdrant 与 Embedding 连接…', 'info');
+  showMsg('#cfg-msg', t('msg-testing'), 'info');
   try {
     const r = await fetch('/api/diagnose', { method: 'POST' });
     const j = await r.json();
     const db = j.qdrant || {}, emb = j.embedding || {};
-    const dbTxt = db.ok ? ('Qdrant ✅ 已连接（集合 ' + (db.collection || db.index || '') + '，文档数 ' + (db.docs != null ? db.docs : '?') + '）') : ('Qdrant ❌ ' + (db.error || db.reason || '未连接'));
-    const embTxt = emb.ok ? ('Embedding ✅ 模型 ' + emb.model + '，维度 ' + emb.dims + '，耗时 ' + emb.ms + 'ms') : ('Embedding ❌ ' + (emb.error || emb.reason || '不可用'));
+    const dbTxt = db.ok ? t('test-qdrant-ok', { c: (db.collection || db.index || ''), d: (db.docs != null ? db.docs : '?') }) : t('test-qdrant-bad', { e: (db.error || db.reason || t('test-notconn')) });
+    const embTxt = emb.ok ? t('test-emb-ok', { m: emb.model, dims: emb.dims, ms: emb.ms }) : t('test-emb-bad', { e: (emb.error || emb.reason || t('test-unavail')) });
     showMsg('#cfg-msg', dbTxt + '　|　' + embTxt, 'ok');
-  } catch (e) { showMsg('#cfg-msg', '测试失败: ' + e, 'err'); }
+  } catch (e) { showMsg('#cfg-msg', t('msg-test-fail') + ': ' + e, 'err'); }
 }
 
 async function openEdit(id) {
@@ -1048,11 +1252,11 @@ async function showHistory(id) {
     $('#hist-body').innerHTML = hist.length ? hist.slice().reverse().map(h => '<div class="histitem"><span class="muted">' + esc((h.at||'').replace('T',' ').slice(0,19)) + '</span> ' + esc(h.content) + '</div>').join('') : '<p class="muted" data-i18n="el-152">暂无历史版本</p>';
     applyLang();
     $('#hist-modal').classList.add('show');
-  } catch (e) { alert('读取历史失败'); }
+  } catch (e) { alert(t('msg-hist-load-fail')); }
 }
 function closeHist() { $('#hist-modal').classList.remove('show'); }
 
-function strengthLabel(s) { s = Number(s) || 0; return s >= 0.8 ? '强' : (s >= 0.5 ? '中' : '弱'); }
+function strengthLabel(s) { s = Number(s) || 0; return s >= 0.8 ? t('str-strong') : (s >= 0.5 ? t('str-mid') : t('str-weak')); }
 
 async function loadLinks() {
   try {
@@ -1069,14 +1273,14 @@ async function loadLinks() {
 }
 async function addLink() {
   const body = { from_project: $('#lk-from').value.trim(), to_project: $('#lk-to').value.trim(), strength: parseFloat($('#lk-strength').value) || 0.6, note: $('#lk-note').value.trim() };
-  if (!body.from_project || !body.to_project) { showMsg('#lk-msg', '源/目标项目必填', 'err'); return; }
+  if (!body.from_project || !body.to_project) { showMsg('#lk-msg', t('msg-link-req'), 'err'); return; }
   const r = await fetch('/api/project-links', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const j = await r.json();
-  if (j.ok) { showMsg('#lk-msg', '已保存关联（强度 ' + strengthLabel(body.strength) + '）', 'ok'); loadLinks(); }
-  else showMsg('#lk-msg', '失败: ' + (j.message || ''), 'err');
+  if (j.ok) { showMsg('#lk-msg', t('msg-link-saved', { s: strengthLabel(body.strength) }), 'ok'); loadLinks(); }
+  else showMsg('#lk-msg', t('msg-fail') + ': ' + (j.message || ''), 'err');
 }
 async function delLink(f, t) {
-  if (!confirm('删除该关联？')) return;
+  if (!confirm(t('confirm-del-link'))) return;
   await fetch('/api/project-links?from=' + encodeURIComponent(f) + '&to=' + encodeURIComponent(t), { method: 'DELETE' });
   loadLinks();
 }
@@ -1085,14 +1289,14 @@ async function showSource(id) {
     const r = await fetch('/api/memories/' + encodeURIComponent(id)); const j = await r.json();
     const s = j.source || {};
     const rows = [];
-    rows.push(['来源类型', esc(s.type || 'human')]);
-    if (s.ref) rows.push(['引用 ref', esc(s.ref)]);
-    if (s.conversation_id) rows.push(['对话 ID', '<code>' + esc(s.conversation_id) + '</code>']);
-    if (s.message_id) rows.push(['消息 ID', '<code>' + esc(s.message_id) + '</code>']);
-    if (s.url) rows.push(['来源 URL', '<a href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.url) + '</a>']);
-    if (s.file) rows.push(['文件', esc(s.file) + (s.line ? (':' + s.line) : '')]);
-    if (s.captured_at) rows.push(['捕获时间', esc((s.captured_at || '').replace('T', ' ').slice(0, 19))]);
-    if (s.trigger) rows.push(['触发方式', esc(s.trigger)]);
+    rows.push([t('src-type'), esc(s.type || 'human')]);
+    if (s.ref) rows.push([t('src-ref'), esc(s.ref)]);
+    if (s.conversation_id) rows.push([t('src-conv-id'), '<code>' + esc(s.conversation_id) + '</code>']);
+    if (s.message_id) rows.push([t('src-msg-id'), '<code>' + esc(s.message_id) + '</code>']);
+    if (s.url) rows.push([t('src-url'), '<a href="' + esc(s.url) + '" target="_blank" rel="noopener">' + esc(s.url) + '</a>']);
+    if (s.file) rows.push([t('src-file'), esc(s.file) + (s.line ? (':' + s.line) : '')]);
+    if (s.captured_at) rows.push([t('src-captured-at'), esc((s.captured_at || '').replace('T', ' ').slice(0, 19))]);
+    if (s.trigger) rows.push([t('src-trigger'), esc(s.trigger)]);
     let html = '<table style="margin-top:8px"><tbody>';
     html += rows.map(x => '<tr><td class="muted" style="padding:4px 16px 4px 0;vertical-align:top">' + x[0] + '</td><td style="padding:4px 0;vertical-align:top">' + x[1] + '</td></tr>').join('');
     html += '</tbody></table>';
@@ -1102,7 +1306,7 @@ async function showSource(id) {
     $('#src-body').innerHTML = html;
     applyLang();
     $('#src-modal').classList.add('show');
-  } catch (e) { alert('读取溯源失败'); }
+  } catch (e) { alert(t('msg-src-load-fail')); }
 }
 function closeSrc() { $('#src-modal').classList.remove('show'); }
 
@@ -1142,7 +1346,7 @@ async function loadDocs() {
       + '<h3 data-i18n="el-168">部署架构</h3><p class="muted">' + esc(d.architecture || '') + '</p>'
       + '<h3 data-i18n="el-169">注意事项</h3><ul style="color:#c9d1d9;font-size:12.5px">' + notes + '</ul>';
   applyLang();
-  } catch (e) { box.innerHTML = '帮助加载失败: ' + esc(e.message); }
+  } catch (e) { box.innerHTML = t('msg-help-fail') + ': ' + esc(e.message); }
 }
 
 // ---- 知识图谱（原生力导向，无外部依赖） ----
@@ -1151,15 +1355,15 @@ function gReset(){ gNodes.clear(); gLinks.clear(); $('#g-msg').textContent=''; c
 function gAttr(s){ return esc(s).replace(/'/g, "\\'"); }
 async function gExpand(){
   const ent = $('#g-seed').value.trim();
-  if(!ent){ $('#g-msg').textContent='请输入实体名'; return; }
-  $('#g-msg').textContent='加载中…';
+  if(!ent){ $('#g-msg').textContent=t('msg-ent-req'); return; }
+  $('#g-msg').textContent=t('msg-loading');
   try{
     const r = await fetch('/api/graph?entity='+encodeURIComponent(ent)+'&limit=100');
     const j = await r.json();
-    if(!j.memories || !j.memories.length){ $('#g-msg').textContent='未找到包含「'+ent+'」的记忆或图谱数据'; return; }
+    if(!j.memories || !j.memories.length){ $('#g-msg').textContent=t('msg-ent-notfound', { e: ent }); return; }
     gIngest(j); gSimulate();
-    $('#g-msg').textContent='节点 '+gNodes.size+'，关系 '+gLinks.size+'（来源记忆 '+j.memories.length+'）';
-  }catch(e){ $('#g-msg').textContent='加载失败: '+e.message; }
+    $('#g-msg').textContent=t('msg-graph-stat', { nodes: gNodes.size, links: gLinks.size, mems: j.memories.length });
+  }catch(e){ $('#g-msg').textContent=t('msg-load-fail')+': '+e.message; }
 }
 function gIngest(j){
   for(const m of (j.memories||[])){
@@ -1193,7 +1397,7 @@ function gDraw(lm){
        '<text x="'+(n.x+12).toFixed(1)+'" y="'+(n.y+4).toFixed(1)+'" fill="#e6edf3" font-size="12">'+esc(n.label)+'</text></g>'; }
   svg.setAttribute('viewBox','0 0 '+W+' '+H); svg.innerHTML=h;
   const used=[...new Set([...gNodes.values()].map(n=>n.type))];
-  $('#g-legend').innerHTML='类型：'+used.map(t=>'<span style="color:'+(color[t]||'#8b949e')+'">●</span> '+t).join('　');
+  $('#g-legend').innerHTML=t('msg-types')+used.map(t=>'<span style="color:'+(color[t]||'#8b949e')+'">●</span> '+t).join('　');
   applyLang();
 }
 async function gClick(id){ $('#g-seed').value=id; await gExpand(); }
@@ -1201,14 +1405,14 @@ async function gClick(id){ $('#g-seed').value=id; await gExpand(); }
 // ---- 聚合图谱 + 全文索引 (v1.10.0) ----
 async function kgLoad() {
   const project = ($('#kg-project').value || '').trim();
-  $('#kg-msg').textContent = '加载中…';
+  $('#kg-msg').textContent = t('msg-loading');
   try {
     const url = '/api/kg?limit=300' + (project ? '&project=' + encodeURIComponent(project) : '');
     const r = await fetch(url);
     const j = await r.json();
     const ents = j.entities || [];
     const rels = j.relations || [];
-    if (!ents.length) { $('#kg-msg').textContent = '该范围暂无聚合实体（先添加带实体的记忆，或点击「重建索引」）'; $('#kg-svg').innerHTML = ''; $('#kg-legend').innerHTML = ''; return; }
+    if (!ents.length) { $('#kg-msg').textContent = t('msg-kg-empty'); $('#kg-svg').innerHTML = ''; $('#kg-legend').innerHTML = ''; return; }
     const kgNodes = new Map();
     for (const e of ents) { kgNodes.set(e.canonical, { id: e.canonical, label: e.name, type: e.type || 'other', count: e.memory_count || 0 }); }
     const kgLinks = new Map();
@@ -1219,8 +1423,8 @@ async function kgLoad() {
     }
     kgSimulate(kgNodes, kgLinks);
     const relTxt = kgLinks.size ? ('，关系 ' + kgLinks.size) : '';
-    $('#kg-msg').textContent = '实体 ' + kgNodes.size + relTxt + '（项目：' + (project || '全部') + '）';
-  } catch (e) { $('#kg-msg').textContent = '加载失败: ' + e.message; }
+    $('#kg-msg').textContent = t('msg-kg-stat', { n: kgNodes.size, rel: relTxt, proj: (project || t('opt-all')) });
+  } catch (e) { $('#kg-msg').textContent = t('msg-load-fail') + ': ' + e.message; }
 }
 function kgSimulate(kgNodes, kgLinks) {
   const nodes = [...kgNodes.values()]; const links = [...kgLinks.values()];
@@ -1249,19 +1453,19 @@ function kgDraw(kgNodes, kgLinks, lm, W, H) {
        '<text x="' + (n.x + 12).toFixed(1) + '" y="' + (n.y + 4).toFixed(1) + '" fill="#e6edf3" font-size="12">' + esc(n.label) + '</text></g>'; }
   svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H); svg.innerHTML = h;
   const used = [...new Set([...kgNodes.values()].map(n => n.type))];
-  $('#kg-legend').innerHTML = '类型：' + used.map(t => '<span style="color:' + (color[t] || '#8b949e') + '">●</span> ' + t).join('　');
+  $('#kg-legend').innerHTML = t('msg-types') + used.map(t => '<span style="color:' + (color[t] || '#8b949e') + '">●</span> ' + t).join('　');
   applyLang();
 }
 async function kgReindex() {
-  $('#kg-msg').textContent = '重建索引中（FTS5 + 聚合图谱），可能需要数秒…';
+  $('#kg-msg').textContent = t('msg-rebuild-ing');
   try {
     const r = await fetch('/api/reindex', { method: 'POST' });
     const j = await r.json();
     const fts = (j.fts_indexed != null) ? j.fts_indexed : '?';
     const kg = j.kg || {};
-    $('#kg-msg').textContent = '重建完成：FTS 索引 ' + fts + ' 条，图谱实体 ' + (kg.entities || 0) + '，关系 ' + (kg.relations || 0);
+    $('#kg-msg').textContent = t('msg-rebuild-done', { fts: fts, ents: (kg.entities || 0), rels: (kg.relations || 0) });
     await kgLoad();
-  } catch (e) { $('#kg-msg').textContent = '重建失败: ' + e.message; }
+  } catch (e) { $('#kg-msg').textContent = t('msg-rebuild-fail') + ': ' + e.message; }
 }
 
 // ---- 质量监控面板 (v1.8.0) ----
@@ -1271,10 +1475,10 @@ async function loadMetrics() {
     const L = j.live || {};
     const er = (L.error_rate != null) ? (L.error_rate * 100).toFixed(2) + '%' : '0%';
     $('#q-live').innerHTML =
-      liveCard('总操作数', L.total || 0) +
-      liveCard('错误数', L.errors || 0) +
-      liveCard('平均延迟', (L.avg_ms != null ? L.avg_ms : 0) + ' ms') +
-      liveCard('错误率', er);
+      liveCard(t('qc-total'), L.total || 0) +
+      liveCard(t('qc-errors'), L.errors || 0) +
+      liveCard(t('qc-latency'), (L.avg_ms != null ? L.avg_ms : 0) + ' ms') +
+      liveCard(t('qc-errrate'), er);
     const ot = $('#q-op tbody'); ot.innerHTML = '';
     (j.by_op || []).forEach(o => {
       const tr = document.createElement('tr');
@@ -1291,8 +1495,8 @@ async function loadMetrics() {
     });
     if (!(j.by_day || []).length) dt.innerHTML = '<tr><td colspan="4" class="muted" data-i18n="el-172">暂无按日记录</td></tr>';
     applyLang();
-    showMsg('#q-msg', '已更新 ' + new Date().toLocaleTimeString(), 'ok');
-  } catch (e) { showMsg('#q-msg', '加载失败: ' + e.message, 'err'); }
+    showMsg('#q-msg', t('msg-updated') + ': ' + new Date().toLocaleTimeString(), 'ok');
+  } catch (e) { showMsg('#q-msg', t('msg-load-fail') + ': ' + e.message, 'err'); }
 }
 function liveCard(label, val) {
   return '<div class="livecard"><div class="lv">' + val + '</div><div class="ll">' + esc(label) + '</div></div>';
@@ -1310,19 +1514,19 @@ function closeCorrect() { $('#correct-modal').classList.remove('show'); }
 async function submitCorrect() {
   const id = $('#co-id').value;
   const feedback = $('#co-feedback').value.trim();
-  if (!feedback) { showMsg('#co-msg', '请填写纠正反馈内容', 'err'); return; }
+  if (!feedback) { showMsg('#co-msg', t('msg-co-req'), 'err'); return; }
   const body = { target_id: id, feedback, user: $('#co-user').value.trim() || 'human', project: $('#co-project').value.trim() || null };
-  showMsg('#co-msg', '应用中…', 'info');
+  showMsg('#co-msg', t('msg-applying'), 'info');
   try {
     const r = await fetch('/api/correct', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const j = await r.json();
     if (j.corrected) {
-      showMsg('#co-msg', '✅ 已纠正（correction_count=' + j.correction_count + '，confidence=' + j.confidence + '）', 'ok');
+      showMsg('#co-msg', t('msg-co-ok', { c: j.correction_count, conf: j.confidence }), 'ok');
       setTimeout(() => { closeCorrect(); runSearch(); }, 900);
     } else {
-      showMsg('#co-msg', '⚠️ 未找到可纠正的记忆：' + (j.reason || ''), 'err');
+      showMsg('#co-msg', t('msg-co-notfound') + '：' + (j.reason || ''), 'err');
     }
-  } catch (e) { showMsg('#co-msg', '纠正失败: ' + e.message, 'err'); }
+  } catch (e) { showMsg('#co-msg', t('msg-co-fail') + ': ' + e.message, 'err'); }
 }
 
 // 质量面板处于激活态时每 5 秒自动刷新
@@ -1344,6 +1548,116 @@ async function loadWebhookRecent() {
   applyLang();
   } catch (e) { /* 静默 */ }
 }
+
+// ---- 智能深化 (T9) ----
+async function loadDuplicates() {
+  const th = parseFloat($('#ins-th').value);
+  showMsg('#ins-dup-sum', t('msg-loading'), 'info');
+  try {
+    const url = '/api/memories/duplicates' + (isNaN(th) ? '' : '?threshold=' + th);
+    const r = await fetch(url); const j = await r.json();
+    if (!j.ok) { showMsg('#ins-dup-sum', t('msg-fail') + ': ' + (j.error || ''), 'err'); return; }
+    const pairs = j.pairs || [];
+    let html = '<div class="row" style="gap:14px;margin-bottom:8px">'
+      + liveCard(t('ins-method'), j.method) + liveCard(t('ins-th-label'), j.threshold)
+      + liveCard(t('ins-pair-count'), j.count) + liveCard(t('ins-total'), j.total_memories) + '</div>';
+    if (!pairs.length) { html += '<p class="muted" data-i18n="ins-no-dup">未检测到重复/冲突记忆。</p>'; }
+    else {
+      html += '<table id="ins-dup-tbl"><thead><tr><th>' + t('ins-sim') + '</th><th>' + t('el-14') + ' A</th><th>' + t('el-14') + ' B</th><th>' + t('el-15') + '</th></tr></thead><tbody>';
+      pairs.forEach(p => {
+        html += '<tr><td' + (p.exact ? ' style="color:var(--danger);font-weight:600"' : '') + '>' + (p.exact ? 'EXACT' : p.similarity) + '</td>'
+          + '<td style="font-size:12px">' + esc(p.a.content) + '</td>'
+          + '<td style="font-size:12px">' + esc(p.b.content) + '</td>'
+          + '<td>' + esc(p.a.project || '-') + '</td></tr>';
+      });
+      html += '</tbody></table>';
+    }
+    $('#ins-dup-body').innerHTML = html;
+    applyLang();
+    showMsg('#ins-dup-sum', t('msg-updated'), 'ok');
+  } catch (e) { showMsg('#ins-dup-sum', t('msg-load-fail') + ': ' + e.message, 'err'); }
+}
+
+async function loadCluster() {
+  showMsg('#ins-cluster-sum', t('msg-loading'), 'info');
+  try {
+    const r = await fetch('/api/tags/cluster'); const j = await r.json();
+    if (!j.ok) { showMsg('#ins-cluster-sum', t('msg-fail') + ': ' + (j.error || ''), 'err'); return; }
+    let html = '<div class="row" style="gap:14px;margin-bottom:8px">'
+      + liveCard(t('ins-unique-tags'), j.unique_tags) + liveCard(t('ins-clusters'), (j.clusters || []).length) + liveCard(t('ins-total'), j.total_memories) + '</div>';
+    html += '<h4 style="margin:10px 0 6px" data-i18n="ins-tag-freq">标签频率</h4><div id="ins-tagfreq">';
+    (j.tag_counts || []).slice(0, 15).forEach(tg => {
+      const w = Math.min(100, tg.count * 4);
+      html += '<div style="display:flex;align-items:center;gap:8px;margin:3px 0;font-size:12px">'
+        + '<span style="width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + esc(tg.tag) + '</span>'
+        + '<span style="flex:1;height:10px;background:var(--border);border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:' + w + '%;background:var(--accent)"></span></span>'
+        + '<span style="width:40px;text-align:right;color:var(--muted)">' + tg.count + '</span></div>';
+    });
+    html += '</div>';
+    const cl = j.clusters || [];
+    html += '<h4 style="margin:12px 0 6px" data-i18n="ins-clusters-h">主题簇（共现≥2）</h4>';
+    if (!cl.length) html += '<p class="muted" data-i18n="ins-no-cluster">暂无稳定共现簇。</p>';
+    else html += '<div style="display:flex;flex-wrap:wrap;gap:8px">' + cl.map(g => '<span style="display:inline-block;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px">' + g.tags.map(esc).join(' · ') + ' <span style="color:var(--muted)">(' + g.size + ')</span></span>').join('') + '</div>';
+    $('#ins-cluster-body').innerHTML = html;
+    applyLang();
+    showMsg('#ins-cluster-sum', t('msg-updated'), 'ok');
+  } catch (e) { showMsg('#ins-cluster-sum', t('msg-load-fail') + ': ' + e.message, 'err'); }
+}
+
+async function loadForget() {
+  showMsg('#ins-forget-sum', t('msg-loading'), 'info');
+  try {
+    const r = await fetch('/api/learning/forgetting-curve'); const j = await r.json();
+    if (!j.ok) { showMsg('#ins-forget-sum', t('msg-fail') + ': ' + (j.error || ''), 'err'); return; }
+    let html = '<div class="row" style="gap:14px;margin-bottom:8px">'
+      + liveCard(t('ins-due'), j.due_count) + liveCard(t('ins-scheduled'), j.scheduled_count)
+      + liveCard(t('ins-med-stab'), j.median_stability_hours + 'h') + liveCard(t('ins-with-sched'), j.with_schedule) + '</div>';
+    html += renderForgetCurve(j.curve || []);
+    html += '<h4 style="margin:12px 0 6px" data-i18n="ins-ret-now">当前留存分布</h4><div id="ins-ret">';
+    const buckets = j.retention_buckets || [];
+    const maxc = Math.max(1, ...buckets.map(x => x.count));
+    buckets.forEach(b => {
+      const w = Math.round(b.count / maxc * 100);
+      html += '<div style="display:flex;align-items:center;gap:8px;margin:2px 0;font-size:11px"><span style="width:64px;color:var(--muted)">' + esc(b.range) + '</span>'
+        + '<span style="flex:1;height:9px;background:var(--border);border-radius:4px;overflow:hidden"><span style="display:block;height:100%;width:' + w + '%;background:var(--ok)"></span></span>'
+        + '<span style="width:30px;text-align:right;color:var(--muted)">' + b.count + '</span></div>';
+    });
+    html += '</div>';
+    $('#ins-forget-body').innerHTML = html;
+    applyLang();
+    showMsg('#ins-forget-sum', t('msg-updated'), 'ok');
+  } catch (e) { showMsg('#ins-forget-sum', t('msg-load-fail') + ': ' + e.message, 'err'); }
+}
+
+function renderForgetCurve(curve) {
+  const W = 680, H = 220, pad = 34;
+  if (!curve.length) return '<p class="muted">无数据</p>';
+  const maxDay = curve[curve.length - 1].day || 30;
+  const x = d => pad + (d / maxDay) * (W - 2 * pad);
+  const y = v => (H - pad) - v * (H - 2 * pad);
+  const pts = curve.map(p => x(p.day).toFixed(1) + ',' + y(p.retention).toFixed(1)).join(' ');
+  let grid = '';
+  for (let g = 0; g <= 4; g++) {
+    const yy = y(g / 4);
+    grid += '<line x1="' + pad + '" y1="' + yy.toFixed(1) + '" x2="' + (W - pad) + '" y2="' + yy.toFixed(1) + '" stroke="var(--border)" stroke-width="1"/>';
+    grid += '<text x="4" y="' + (yy + 4).toFixed(1) + '" fill="var(--muted)" font-size="10">' + (g * 25) + '%</text>';
+  }
+  for (let d = 0; d <= maxDay; d += 5) {
+    grid += '<text x="' + x(d).toFixed(1) + '" y="' + (H - 12) + '" fill="var(--muted)" font-size="10" text-anchor="middle">' + d + 'd</text>';
+  }
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;max-width:' + W + 'px;height:auto" role="img" aria-label="forgetting curve">'
+    + grid
+    + '<polyline points="' + pts + '" fill="none" stroke="var(--accent)" stroke-width="2"/>'
+    + '<text x="' + (W / 2) + '" y="14" fill="var(--muted)" font-size="11" text-anchor="middle" data-i18n="ins-curve-cap">若不复习，平均留存衰减（未来 30 天）</text>'
+    + '</svg>';
+}
+
+// 智能深化：质量面板激活时首次自动加载一次
+let _insightLoaded = false;
+document.addEventListener('click', (e) => {
+  const tab = e.target.closest && e.target.closest('.tab[data-pane="quality"]');
+  if (tab && !_insightLoaded) { _insightLoaded = true; loadDuplicates(); loadCluster(); loadForget(); }
+});
 
 // 初始
 runSearch();

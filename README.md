@@ -1,6 +1,48 @@
 # ai-memory —— 本地优先的 AI 长期记忆服务
 
-> 一个面向 AI 助手的"长期记忆"后端：把对话、文档片段、知识要点结构化存进 Qdrant 向量库（或本地 SQLite 降级库），用**向量检索 + 关键词召回 + 知识图谱**把"过去说过什么、谁和谁什么关系"随时找回来。支持本地模型与云端模型后端解耦，提供一键自测，并且在每个外部依赖（Qdrant、嵌入模型、LLM、图谱模型）异常时都有明确的降级路径，保证**主写入流程永不被次要能力拖垮**。
+> 一个面向 AI 助手的"长期记忆"后端：把对话、文档片段、知识要点结构化存进 Qdrant 向量库（或本地 SQLite 降级库），用**向量检索 + 关键词召回 + 知识图谱**把"过去说过什么、谁和谁什么关系"随时找回来。支持本地模型与云端模型后端解耦，提供一键自测，并且在每个外部依赖异常时都有明确的降级路径。
+
+---
+
+## 快速开始 / 部署
+
+### 本地开发（SQLite 降级模式，无需任何外部依赖）
+```bash
+npm start
+# 访问 http://localhost:8765/admin
+```
+
+### Docker 全栈（Qdrant + ai-memory）
+```bash
+docker compose up -d
+curl -X PUT http://localhost:6333/collections/memories -H 'Content-Type: application/json' \
+  -d '{"vectors":{"size":1024,"distance":"Cosine","on_disk":true},"quantization_config":{"scalar":{"type":"int8"}},"hnsw_config":{"m":8}}'
+# 管理界面 http://localhost:8765/admin
+```
+
+### 部署到服务器（deploy.js）
+```bash
+SSH2_PASSWORD=your_password node deploy.js
+```
+脚本行为：远端整目录 tar 备份 → 打包 `lib/*.js` + `server.js` + `admin.html` + `package.json` → SFTP 上传 → 解压 → 逐文件 `node --check` 语法全检 → 删除远端死代码 → `systemctl restart ai-memory` → `/api/health` 健康检查。
+
+环境变量：`SSH2_PASSWORD`（密码）、`HOST`（目标 IP，默认 `192.168.110.128`）。
+绝不覆盖：`config.json`、`memories.db*`、`backups/`。
+
+### 手动 scp（有原生 ssh 时）
+```bash
+ssh root@192.168.110.128 'tar czf /opt/ai-memory-backup-$(date +%Y%m%d-%H%M%S).tar.gz -C /opt ai-memory'
+scp server.js admin.html lib/*.js root@192.168.110.128:/opt/ai-memory/
+ssh root@192.168.110.128 'cd /opt/ai-memory && node --check server.js && for f in lib/*.js; do node --check "$f" || exit 1; done && systemctl restart ai-memory'
+```
+
+### 回滚
+```bash
+ssh root@192.168.110.128 'systemctl stop ai-memory && rm -rf /opt/ai-memory && tar xzf /opt/ai-memory-backup-<时间戳>.tar.gz -C /opt && systemctl start ai-memory'
+```
+
+> 服务器路径：`/opt/ai-memory/`，systemd 服务 `ai-memory.service`，监听 `:8765`。
+> `lib/` 是唯一真正运行的代码目录（`server.js` 只 `require('./lib/config')` + `require('./lib/rest')`），部署必须覆盖 `lib/`。
 
 ---
 
@@ -155,14 +197,14 @@
 | 8 | **自动捕获模式选择** | `llm_enabled && llm_url` | 否则自动走 `heuristic` 启发式 | 否 |
 | 9 | **自动捕获 LLM 失败** | `llmExtract` 抛异常或返回非 JSON | `candidates=[]; mode='heuristic'` → 回退按句切分入库 | 否 |
 | 10 | **自动捕获单条失败** | 某条 `doAdd` 抛异常 | `skipped++`，其余继续 | 否 |
-| 11 | **混合检索许可证** | ES 为 basic 许可证，不支持服务端 RRF | 改用**应用层 RRF**（客户端融合，K=60） | 否 |
-| 12 | **检索失败** | ES 查询异常 | 返回 `[]`，不会让上层崩溃 | 否 |
+| 11 | **混合检索** | Qdrant 无原生 RRF | 改用**应用层 RRF**（Node 端融合，K=60）| 否 |
+| 12 | **检索失败** | Qdrant 查询异常 | 返回 `[]`，不会让上层崩溃 | 否 |
 | 13 | **生命周期清理失败** | `cleanupExpired` / `deleteByQuery` 异常 | `catch` 返回 `0`，不影响主请求 | 否 |
 | 14 | **MCP 工具异常** | 工具执行出错 | 返回 `{isError:true, content:[{text:'error: ...'}]}` | 否（向上报告） |
 | 15 | **文件监听 offset** | `.capture.offsets.json` 读取失败 | 忽略，从头监听（可能重复捕获已处理内容，但会被 dedup 合并） | 否 |
 | 16 | **API Key 安全** | `/api/config` GET | `api_key` 掩码为 `******`；POST 仅当值 `!== '******'` 才更新（避免把掩码当真值写回） | 否 |
 
-**关键结论**：在 ES 正常的前提下，即使嵌入服务宕机、LLM 不可用、图谱模型报错，**记忆写入与关键词检索始终可用**。这是系统可用性的底线。
+**关键结论**：在 Qdrant 正常的前提下，即使嵌入服务宕机、LLM 不可用、图谱模型报错，**记忆写入与关键词检索始终可用**。这是系统可用性的底线。
 
 ---
 
@@ -198,7 +240,10 @@
 | `memories.db` | （运行时生成）Qdrant 不可用时的本地 SQLite 降级库 |
 | `lib/memory_lifecycle.js` | 清理/巩固/批量操作（从 memory.js 拆分）|
 | `lib/memory_work.js` | 短时工作记忆操作（从 memory.js 拆分）|
-| `server.js.bak-<时间戳>` / `admin.html.bak-<时间戳>` | 每次部署自动备份，用于回滚 |
+| `lib/capture.js` | 自动捕获（文件监听 + API 触发）|
+| `lib/webhook.js` | 事件推送与告警通知 |
+| `lib/qdrant.js` | Qdrant 客户端封装 |
+| `lib/config.js` | 配置管理（config.json + 环境变量覆盖）|
 
 > 服务器上路径：`/opt/ai-memory/`，systemd 服务名 `ai-memory.service`。
 
@@ -253,7 +298,7 @@ curl -X PUT http://localhost:6333/collections/memories -H 'Content-Type: applica
 
 ---
 
-## 九、配置项详解（`config.json`）
+## 八、配置项详解（`config.json`）
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
@@ -282,7 +327,7 @@ curl -X PUT http://localhost:6333/collections/memories -H 'Content-Type: applica
 
 ---
 
-## 十、管理界面与四个自测按钮
+## 九、管理界面与自测按钮
 
 打开 `http://<服务器IP>:8765/admin`：
 
@@ -304,7 +349,7 @@ curl -X PUT http://localhost:6333/collections/memories -H 'Content-Type: applica
 
 ---
 
-## 十一、MCP 工具清单
+## 十、MCP 工具清单
 
 | 工具 | 说明 |
 |------|------|
@@ -319,7 +364,7 @@ curl -X PUT http://localhost:6333/collections/memories -H 'Content-Type: applica
 
 ---
 
-## 十二、版本
+## 十一、版本
 
 - **v1.14.0**（当前版本）：代码清理 + 全面错误可观测 + 性能优化。
   - **② 错误全覆盖**：`errStats` 从 `backend.js` 移至 `config.js`（全模块共享），剩余 54 处 `catch(e){}` 全部接入计数，`/api/health` 的 `err_stats` 含 11 个分类（embed/fts/kg/webhook/bump/changelog/cleanup/capture/backup/config/other）。

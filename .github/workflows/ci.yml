@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # node --check 仅做语法解析, 无需安装依赖(better-sqlite3 等), 快速可靠地拦截坏代码合入 main
+      - name: Syntax check
+        run: |
+          fail=0
+          for f in server.js lib/*.js; do
+            node --check "$f" || { echo "SYNTAX FAIL: $f"; fail=1; }
+          done
+          exit $fail
+      # 说明：自动部署 128 需配置 GitHub secrets(SSH2_PASSWORD / HOST 等)并让 deploy.js 支持 CI 环境。
+      # 当前 deploy.js 依赖本地 sshtool 绝对路径, CI(ubuntu)不可直接运行, 故部署保持手动 `node deploy.js`。
+      # 后续若需全自动, 可将 deploy.js 的 SSH 实现改为项目内脚本或纯 ssh2, 并在此追加 deploy job。

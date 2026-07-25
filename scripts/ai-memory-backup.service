@@ -1,0 +1,13 @@
+[Unit]
+Description=ai-memory backup job
+After=ai-memory.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ai-memory
+ExecStart=/usr/bin/node /opt/ai-memory/scripts/backup.js
+User=root
+Environment=NODE_PATH=/opt/ai-memory/node_modules
+
+[Install]
+WantedBy=multi-user.target

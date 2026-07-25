@@ -318,7 +318,7 @@ API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js
 
 - `BASE`：被测服务地址；`API_KEY`：服务端 `config.json` 中 `api_keys` 之一（测试助手自动附带 `Authorization: Bearer` 与 `X-Requested-With: ai-memory` 头）。
 - 长捕获管线：LLM/嵌入推理期间对客户端「无数据下发」，整段空闲可达 20~40s，故依赖服务侧 socket 超时已调高（≥120s），否则客户端会报 "other side closed"。
-- 期望输出：`===== OVERALL ok=N fail=0 =====`（N 随套件增减，v1.15.3 基线 81 项全过）。任一 `fail>0` 即阻断。
+- 期望输出：`===== OVERALL ok=N fail=0 =====`（N 随套件增减，v1.16.0 基线 81 项全过）。任一 `fail>0` 即阻断。
 
 ---
 
@@ -385,12 +385,34 @@ API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js
 | `related_to` | 知识图谱：某实体的相连实体（含关系类型、次数）+ 来源记忆 |
 | `graph_query` | 知识图谱：涉及某实体的原始实体/关系子图 |
 | `path_between` | 知识图谱：两实体间关系路径（BFS），不相连返回 `path:null` |
+| `conclude_session` | 结束会话：工作记忆 promote 到长期库，并用 LLM 总结后存入（修复原会话摘要丢失 bug） |
+
+### v1.16.0 新增工具（记忆"更好用"增强，共 13 个）
+
+| 工具 | 说明 |
+|------|------|
+| `recall_for_context` | **#87 上下文回忆**：从消息数组提炼查询并检索，给 LLM 当前上下文喂相关记忆（语义/关键词回退） |
+| `resume_state` | **#88 会话续接**：拉近期记忆，LLM 生成 `{summary, threads}` 续接状态（无 LLM 回退近期清单） |
+| `detect_contradictions` | **#89 矛盾检测**：向量余弦（无向量则 jaccard）找相近记忆，LLM 判定矛盾；`check_contradictions` 可在写入时 opt-in 阻断冲突 |
+| `memory_health` | **#90 健康度**：重复/未打标/到期/低置信综合打分 + 改进建议（复用 insight 层） |
+| `prune_memories` | **#91 修剪**：默认 dry-run 列出重复/低价值候选；`confirm=true` 才删除 |
+| `merge_memories` | **#91 合并**：取多条记忆 LLM 综合内容、标签并集，主项保留、其余删除 |
+| `export_memories_markdown` | **#92 Markdown 导出**：按 project/tag/category/date 分组导出为 Markdown（MCP 资源同款） |
+| `watch_tag` / `unwatch_tag` / `list_watches` | **#94 标签订阅**：订阅 tag 命中时向 Webhook URL 推送（落 kv_store，幂等） |
+| `schedule_recall` / `due_recalls` | **#95 间隔召回**：安排"N 天/小时后复习"（支持负区间=立即到期），到期批量取出 |
+| `digest` | **#96 周期摘要**：按 day/week/month 拉记忆，LLM 生成 `{summary, highlights, themes}` |
+
+> v1.16.0 同时引入 **MCP Resources**（能力 `resources:{}`）：`memory://all`（近期 JSON）、`memory://project/<encoded>`（项目记忆，支持 `/markdown`、`/json`）、`memory://memory/<id>`（单条 JSON），供支持 Resources 的客户端浏览/读取。
+>
+> 多模态记忆（原规划的 ⑦⑧）本期**未做**，留待后续独立批次。
 
 ---
 
 ## 十一、版本
 
-- **v1.15.3**（当前版本）：修复 4 个被早期崩溃掩盖的预存服务端缺陷（端到端测试 `test/run.js` 全过 81 项后暴露）：① **捕获管线偶发断连**——`_httpServer.timeout` 由 30s 调高至 120s，避免 LLM/嵌入推理期间（整段「无数据下发」可达 20~40s）socket 被提前销毁（客户端表现 "other side closed"）；② **`POST /api/correct/:id` 调用不存在的 `correction.correctMemory`**——改为 `correction.doCorrect({target_id, feedback, ...})`；③ **`/api/project-links` 路由调用不存在的 `projects.linkProjects/unlinkProjects`**——改为 `upsertProjectLink/removeProjectLink`，并兼容 `from/to` 与 `from_project/to_project` 两种命名；④ **`util.relEnabled` 把字符串 `'false'` 当作真值**——`include_related=false` 仍会借用跨项目记忆，现已正确归一化。另将端到端验证命令 `API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js` 写入 README 部署章。
+- **v1.16.0**（当前版本）：记忆"更好用"增强批次（10 项非多模态功能，MCP 工具由 31 增至 44）。新增 4 个后端模块：`lib/context.js`（#87 上下文回忆、#88 会话续接、#92 Markdown 导出、#96 周期摘要）、`lib/review.js`（#95 间隔召回）、`lib/maintain.js`（#89 矛盾检测、#90 健康度、#91 修剪/合并）、`lib/watch.js`（#94 标签订阅）。配套：① `lib/memory.js` `doUpdate`/`doAdd` 打通 `next_review_at`（间隔重复调度），`doAdd` 新增 `check_contradictions`/`block_on_conflict` opt-in 矛盾阻断钩子与 `watch` 推送钩子；② `lib/backend.js` 补齐 SQLite 降级路径长期遗漏的 `next_review_at` 列（迁移 + `sqliteAdd` + `rowToDoc` + `payloadToRow` + `sqliteUpdate`），修复 `insight.loadAll` 在降级模式因缺列崩溃；③ 修复 `sqliteSearch` 关键词/混合模式下 LIKE 占位符错配（"Too few parameter values"）的预存 bug；④ 修复 `conclude_session` 把 `chatJSON` 字符串当对象导致会话摘要永不保存的 bug；⑤ `lib/mcp.js` 新增 13 个工具 schema+handler，并新增 **MCP Resources**（`memory://all`、`memory://project/<encoded>`、`memory://memory/<id>`）能力。所有新功能为增量 MCP 工具/钩子，不改 `doAdd`/`doSearch` 核心契约；删除类操作默认 dry-run。多模态记忆（原 ⑦⑧）留待后续批次。
+
+- **v1.15.3**：修复 4 个被早期崩溃掩盖的预存服务端缺陷（端到端测试 `test/run.js` 全过 81 项后暴露）：① **捕获管线偶发断连**——`_httpServer.timeout` 由 30s 调高至 120s，避免 LLM/嵌入推理期间（整段「无数据下发」可达 20~40s）socket 被提前销毁（客户端表现 "other side closed"）；② **`POST /api/correct/:id` 调用不存在的 `correction.correctMemory`**——改为 `correction.doCorrect({target_id, feedback, ...})`；③ **`/api/project-links` 路由调用不存在的 `projects.linkProjects/unlinkProjects`**——改为 `upsertProjectLink/removeProjectLink`，并兼容 `from/to` 与 `from_project/to_project` 两种命名；④ **`util.relEnabled` 把字符串 `'false'` 当作真值**——`include_related=false` 仍会借用跨项目记忆，现已正确归一化。另将端到端验证命令 `API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js` 写入 README 部署章。
 
 - **v1.15.2**：修复「使用帮助」在中文环境下无法加载。根因为帮助容器 `#docs` 自身误挂 `data-i18n="el-93"`，而 `el-93` 仅英文词典有；`MutationObserver` 触发的 `applyLang` 在中文下把刚写入的帮助内容回写为初始占位。移除该 `data-i18n` 后修复（用 jsdom 真机复现确认）。
 

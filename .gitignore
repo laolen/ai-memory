@@ -3,6 +3,7 @@ memories.db
 memories.db-shm
 memories.db-wal
 .capture.offsets.json
+# 真实运行配置（含密钥）不入库；提交的是结构模板 config.example.json（密钥留空，复制为 config.json 后填值）
 config.json
 *.bak
 *.log

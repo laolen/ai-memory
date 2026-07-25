@@ -31,9 +31,10 @@
 
 ### 2.2 记忆去重与合并（dedup）
 - 开关 `dedup_enabled`（默认 `true`）。
-- 写入时计算新内容与已有记忆的余弦相似度，`>= dedup_threshold`（默认 `0.92`）则**合并**到该记忆：内容覆盖为最新、标签取并集、向量重算、合并时间更新——而不是新增重复条目。
+- **两级判重**：① **内容哈希精确判重**（确定性）——写入时对内容做归一化（小写 + 空白折叠）SHA-1 存入 `content_hash` 字段，完全相同的内容直接命中合并（similarity=1），不受向量阈值影响；② **向量相似判重**——余弦相似度 `>= dedup_threshold`（默认 `0.92`）则**合并**到该记忆：内容覆盖为最新、标签取并集、向量重算、合并时间更新——而不是新增重复条目。
+- 所有写入口（REST `POST /api/memories`、MCP `add_memory`、自动捕获 `reconcileFact`）汇聚到同一个 `backend.dedupFind`，两级判重对全部入口生效。
 - `add_memory` 工具传 `merge:false` 可强制新增。
-- **降级**：去重相似度计算异常时直接返回 `null`，不阻塞写入（见第五节）。
+- **降级**：去重查询异常时返回 `null` 不阻塞写入，但会打 `console.error` 日志并计入 `dedup_stats.err`（可能产生重复记忆，可从 `/api/health` 的 `dedup_stats` 观测 exact/vector/err 计数）。
 
 ### 2.3 时序感知
 - 每条记忆带 `created_at` / `updated_at`。
@@ -112,7 +113,7 @@
 
 **模块职责**
 - `embed()`：调用嵌入端点，失败返回 `{ok:false}`，调用方据此降级（记忆仍写入，仅无向量）。
-- `dedupFind()`：相似度查找，失败返回 `null`。
+- `dedupFind()`：两级判重（content_hash 精确 → 向量相似），失败记日志 + `dedup_stats.err` 后返回 `null`。
 - `llmExtract()` / `captureText()`：自动捕获，LLM 失败回退启发式。
 - `extractGraph()` / `normalizeGraph()` / `canon()`：图谱抽取与实体归一。
 - `searchMemories()`：三种检索模式 + 应用层 RRF。
@@ -147,7 +148,7 @@
 | 1 | **数据库** | `qdrant_url` 空 / 无嵌入 / Qdrant 不可用 | 自动改用本地 SQLite `memories.db`；二者皆无则存储报错（健康检查可见） | 否（有降级库）/ 是（全无） |
 | 2 | **配置加载** | `config.json` 缺失/损坏 | `try/catch` 静默忽略，回落到内置默认值 + 环境变量 fallback | 否 |
 | 3 | **嵌入失败** | 嵌入端点不可达 / 超时 / 返回 0 维 | `catch` 后 `doc.embedding` 不赋值，记忆**仍写入**，只是该条不参与语义检索（退化为仅关键词） | 否 |
-| 4 | **去重查找失败** | `dedupFind` 异常 | 返回 `null` → 视作无相似记忆 → 直接新增，不合并 | 否 |
+| 4 | **去重查找失败** | `dedupFind` 异常 | 打 `console.error` + `dedup_stats.err`++，返回 `null` → 视作无相似记忆 → 直接新增，不合并（可能重复，可观测） | 否 |
 | 5 | **知识图谱抽取（开关）** | `kg_enabled=false` 或没有可用 url | `extractGraph` 直接返回 `{entities:[],relations:[],entity_names:[]}` | 否 |
 | 6 | **知识图谱抽取（调用）** | LLM 调用失败 / 网络错 / JSON 解析失败 | `catch` 返回空；外层 `attachGraph` 再 `catch` → 实体字段置 `[]` | 否 |
 | 7 | **图谱 JSON 包裹** | 模型返回 ` ```json ... ``` ` 围栏 | 先 `strip` 围栏再 `JSON.parse`，兼容不严格输出 | 否 |
@@ -190,7 +191,7 @@
 | `server.js` | 后端主程序（MCP SSE + Admin + REST，含 `/api/test-backend`、四个测试助手、本地/云端鉴权、全部降级逻辑） |
 | `admin.html` | 管理界面（服务启动时读入内存，**改完必须重启服务才生效**） |
 | `config.json` | 运行配置（Qdrant 地址、嵌入端点、各 `api_key` 等；部署脚本**不覆盖**此文件） |
-| `deploy.sh` | 一键部署脚本（连通性预检 → 备份 → scp → `node --check` → 重启 → 健康检查），`REMOTE` 变量可覆盖目标主机 |
+| `deploy.sh` | 一键部署脚本（连通性预检 → 整目录 tar 备份 → scp `lib/*.js` + `server.js` + `admin.html` → 远端 `node --check` 全检 → 重启 → 健康检查），`REMOTE` 变量可覆盖目标主机；不碰 `config.json` 与记忆数据 |
 | `LICENSE.md` | MIT 许可证（中文） |
 | `memories.db` | （运行时生成）Qdrant 不可用时的本地 SQLite 降级库 |
 | `.capture.offsets.json` | （运行时生成）文件监听偏移量，重启续传 |
@@ -207,7 +208,7 @@
 ```bash
 bash deploy.sh
 ```
-脚本行为：连通性预检 → 备份远端原文件到 `.bak-<时间戳>` → 上传 `server.js` / `admin.html` → 远端 `node --check` → `systemctl restart ai-memory` → 健康检查。只覆盖这两个文件，不动 `config.json`。目标主机由 `deploy.sh` 内的 `REMOTE` 变量决定（默认 `root@192.168.110.128`）。
+脚本行为：连通性预检 → 远端整目录备份到 `/opt/ai-memory-backup-<时间戳>.tar.gz` → 上传 `lib/*.js` + `server.js` + `admin.html`（**`lib/` 是真正运行的代码目录，必须随部署覆盖**）→ 远端对 server.js 与全部 lib/*.js 逐个 `node --check` → `systemctl restart ai-memory` → 健康检查（核对 `version` / `store` / `qdrant_connected`）。绝不覆盖 `config.json` 与记忆数据（`memories.db*` / `backups/`）。目标主机由 `REMOTE` 变量决定（默认 `root@192.168.110.128`）。
 
 ### 方式二：手动
 ```bash
@@ -305,6 +306,7 @@ ssh root@192.168.110.128 'cd /opt/ai-memory && \
   - **⑨ 游标分页**：search/list 响应新增 `next_cursor` 字段（id 定位），便于服务端分页遍历。
   - **⑩ 统计面板**：`GET /api/stats` 返回记忆总量/固定数/过期数/按类别分布（Qdrant count API + SQLite fallback）。
   - **MCP 工具新增**：`pin_memory`、`unpin_memory`、`export_memories`、`import_memories`、`reset_memories`、`backup_memories`、`get_memory_stats`（共 7 个）。
+  - **v1.13.0 追加修复（去重可靠性专项）**：(a) 修复 Qdrant `is_empty` 过滤语法错误——`{is_empty:{value:true}}` 会被 Qdrant 1.18.3 拒绝（HTTP 400），导致带 `project` 无 `session` 场景下 dedupFind 静默失败、重复记忆持续产生；正确语法为 `{key, is_empty:true}`（布尔），`dedupFind` 与 `cleanupExpired` 的 `expiredFilter` 同步修正。(b) `qdrant.upsert` 加 `?wait=true`，保证写入（HNSW）入图后才返回，紧接的去重查询能命中刚写入的点。(c) `dedupFind` 不再静默吞错——失败打 `console.error` 并计入 `dedup_stats.err`。(d) 新增 **content_hash 精确判重**（归一化 SHA-1，`util.hashContent`）作为向量判重之前的确定性快路径，`doUpdate` 改内容时同步刷新哈希。(e) `/api/health` 新增 `dedup_stats`（exact/vector/err 计数）可观测。(f) `deploy.sh` 重写：此前只拷 `server.js`+`admin.html`、漏掉真正运行的 `lib/`（导致"已推送未部署"断层），现覆盖 `lib/*.js` 并整目录 tar 备份。端到端验证：`node test/run.js`（新增 `test/dedup.js` 确定性去重用例与 `test/cleanup.js` is_empty 清理分支用例）。
   - **配置字段新增**：`mmr_enabled`、`mmr_lambda`、`reranker_url`、`reranker_model`、`reranker_api_key`、`api_keys`、`auto_compress`、`backup_path`。
   - **端到端验证**：见 `node test/run.js`（按功能拆分套件，本地 SQLite 降级模式 `OVERALL ok=25 fail=0`；`correction`/`qdrant_regression` 在完整部署上全过）。
 - **v1.12.0**：补齐与 Mem0 的 **4 项差距（零新依赖）**：

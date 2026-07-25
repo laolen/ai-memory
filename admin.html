@@ -67,7 +67,7 @@
 </head>
 <body>
 <header>
-  <h1>AI Memory 管理界面</h1>
+  <h1 id="header-title">AI Memory 管理界面</h1>
   <div class="status">
     <span id="st-qdrant"><span class="dot bad"></span>Qdrant 未连接</span>
     <span id="st-emb"><span class="dot warn"></span>向量未启用</span>
@@ -295,6 +295,13 @@
     <h3 style="margin-top:0">按日统计（近 30 天）</h3>
     <table id="q-day"><thead><tr><th>日期</th><th>总次数</th><th>错误</th><th>平均延迟(ms)</th></tr></thead><tbody></tbody></table>
   </div>
+  <div class="card" style="margin-top:18px">
+    <h3 style="margin-top:0">Webhook 投递状态</h3>
+    <p class="muted" style="margin:4px 0">最近 10 条投递记录（环形缓冲）。每 15 秒自动刷新。</p>
+    <table id="wh-table"><thead><tr><th>时间</th><th>事件</th><th>目标</th><th>状态</th></tr></thead><tbody id="wh-tbody"><tr><td colspan="4" class="muted">加载中…</td></tr></tbody></table>
+    <div style="margin-top:8px"><button class="ghost" onclick="loadWebhookRecent()">刷新</button></div>
+  </div>
+  </div>
 </div>
 
 <!-- 编辑弹窗 -->
@@ -378,7 +385,9 @@ function setStatus(h) {
   else { emb.innerHTML = '<span class="dot warn"></span>向量未启用'; }
   // dedup 与错误统计
   const dd = h.dedup_stats || {}; const es = h.err_stats || {};
-  $('#st-dedup').textContent = '去重(exact:' + (dd.exact||0) + ' vector:' + (dd.vector||0) + ' err:' + (dd.err||0) + ') 错误(embed:' + (es.embed||0) + ' fts:' + (es.fts||0) + ' kg:' + (es.kg||0) + ' webhook:' + (es.webhook||0) + ' other:' + (es.other||0) + ')';
+  $('#st-dedup').textContent = '精确:' + (dd.exact||0) + ' 向量:' + (dd.vector||0) + ' 去重错误:' + (dd.err||0) + ' | 嵌入:' + (es.embed||0) + ' FTS:' + (es.fts||0) + ' 图谱:' + (es.kg||0) + ' webhook:' + (es.webhook||0) + ' 强化:' + (es.bump||0) + ' 审计:' + (es.changelog||0) + ' 清理:' + (es.cleanup||0) + ' 捕获:' + (es.capture||0) + ' 备份:' + (es.backup||0) + ' 配置:' + (es.config||0) + ' 其他:' + (es.other||0);
+  // 动态标题显示版本号
+  if (h.version) { $('#header-title').textContent = 'AI Memory 管理界面 v' + h.version; }
 }
 
 async function health() {
@@ -910,8 +919,21 @@ async function submitCorrect() {
 // 质量面板处于激活态时每 5 秒自动刷新
 setInterval(() => {
   const qp = document.getElementById('pane-quality');
-  if (qp && qp.classList.contains('active')) loadMetrics();
+  if (qp && qp.classList.contains('active')) { loadMetrics(); loadWebhookRecent(); }
 }, 5000);
+
+// ---- Webhook 最近投递 (v1.12.0) ----
+async function loadWebhookRecent() {
+  try {
+    const r = await fetch('/api/webhooks/recent');
+    const j = await r.json();
+    const tb = $('#wh-tbody');
+    if (!j || !j.length) { tb.innerHTML = '<tr><td colspan="4" class="muted">暂无投递记录</td></tr>'; return; }
+    tb.innerHTML = j.slice(0, 10).map(w =>
+      '<tr><td style="font-size:11px">' + esc(w.ts || '') + '</td><td>' + esc(w.event || '') + '</td><td style="font-size:11px">' + esc((w.url || '').slice(0, 40)) + '</td><td>' + (w.ok ? '<span style="color:#3fb950">成功</span>' : '<span style="color:#f85149">失败</span>') + '</td></tr>'
+    ).join('');
+  } catch (e) { /* 静默 */ }
+}
 
 // 初始
 runSearch();

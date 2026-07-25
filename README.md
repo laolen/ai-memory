@@ -294,7 +294,16 @@ ssh root@192.168.110.128 'cd /opt/ai-memory && \
 
 ## 十二、版本
 
-- **v1.13.0**（当前版本）：补齐与 Mem0 的**剩余全部差距（10 项，零新依赖）**：
+- **v1.14.0**（当前版本）：代码清理 + 全面错误可观测 + 性能优化。
+  - **② 错误全覆盖**：`errStats` 从 `backend.js` 移至 `config.js`（全模块共享），剩余 54 处 `catch(e){}` 全部接入计数，`/api/health` 的 `err_stats` 含 11 个分类（embed/fts/kg/webhook/bump/changelog/cleanup/capture/backup/config/other）。
+  - **① 遗留文件清理**：删除 `test_full.js`、`test_deep.js`、`eval/` 目录、`deploy.sh`、`DEPLOY_REPORT_*.md`、`FEATURE_INTERACTION_REVIEW.md`。
+  - **③ 版本号升为 1.14.0**，admin 标题动态显示版本。
+  - **⑤ `refreshEntityVocab` 启动懒加载**：启动时不 scrollAll（`rest.js` 不再调 `refreshEntityVocab()`），首次 `queryEntities` 时才全量拉取，平时由 `addEntityVocab` 增量维护。
+  - **⑦ Webhook 投递可视化**：admin 质量监控面板新增 "Webhook 投递状态" 卡片，展示最近 10 条投递记录。
+  - **⑧ test/README.md** 已同步说明 `unit.js` 不依赖 BASE、其余测试需在 128 完整环境跑。
+  - **⑩ README 架构描述同步更新**，`deploy.js` 标注为首选部署工具。端到端验证：`node test/run.js`。
+
+- **v1.13.0**（原版本）：补齐与 Mem0 的**剩余全部差距（10 项，零新依赖）**：
   - **① MMR 多样性重排**：`mmr_enabled`+`mmr_lambda`，`applyMMR` 函数（Jaccard 近似）。末次排序前插入，λ 控制语义 vs 多样性平衡。
   - **② 可插拔 reranker 管线**：`reranker_url` 配置外部 cross-encoder，search/list 走 HTTP 回调精排（失败静默退化）。
   - **③ 记忆固定（pin）**：`pinned` 字段免除过期/衰减/清理。`POST /api/memories/pin`、`POST /api/memories/unpin`，MCP `pin_memory`/`unpin_memory` 工具。

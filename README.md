@@ -318,7 +318,7 @@ API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js
 
 - `BASE`：被测服务地址；`API_KEY`：服务端 `config.json` 中 `api_keys` 之一（测试助手自动附带 `Authorization: Bearer` 与 `X-Requested-With: ai-memory` 头）。
 - 长捕获管线：LLM/嵌入推理期间对客户端「无数据下发」，整段空闲可达 20~40s，故依赖服务侧 socket 超时已调高（≥120s），否则客户端会报 "other side closed"。
-- 期望输出：`===== OVERALL ok=N fail=0 =====`（N 随套件增减，v1.16.0 基线 81 项全过）。任一 `fail>0` 即阻断。
+- 期望输出：`===== OVERALL ok=N fail=0 =====`（N 随套件增减，v1.18.0 基线 80 项全过）。任一 `fail>0` 即阻断。
 
 ---
 
@@ -406,11 +406,37 @@ API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js
 >
 > 多模态记忆（原规划的 ⑦⑧）本期**未做**，留待后续独立批次。
 
+### v1.17.0 新增工具（记忆"更好用"++ 增强，共 11 个）
+
+| 工具 | 说明 |
+|------|------|
+| `scheduler_status` | 查看后台扫描调度器状态（最后运行时间/历史） |
+| `list_watch_dead` / `retry_watch_dead` | 列出/重发标签订阅死信队列中的失败通知 |
+| `list_archived` / `archive_memories` / `restore_archived` | 冷记忆二级存储：列出/归档（默认 dry-run）/恢复 |
+| `export_memory_text` | 多格式导出：markdown/jsonl/obsidian/cards |
+| `scheduler_status` | 调度器状态查询（v1.17 新增后台扫描） |
+
+> v1.17.0 同时引入 **MCP Prompts**（能力 `prompts:{}`）：`summarize_project`、`find_contradictions`、`weekly_digest`、`export_markdown`。传输层升级至 **Streamable HTTP**（SDK v1.29.0 内置），单端点 `/mcp` 支持 POST/GET/DELETE + 同源防护。
+
+### v1.18.0 新增工具（系统增强，共 3 个）
+
+| 工具 | 说明 |
+|------|------|
+| `create_backup` | 创建整目录备份（tar.gz 到 backup_path），可加标签 |
+| `list_backups` | 列出已创建的备份记录 |
+| `restore_backup` | 从备份文件恢复整目录（危险操作） |
+
+> v1.18.0 同时引入 **并发请求队列**（`lib/queue.js`，可配置单 GPU 串行/多 GPU 并行）、**分析面板**（admin.html Dashboard tab）、**文档站点**（`docs/` 目录）。
+
 ---
 
 ## 十一、版本
 
-- **v1.16.0**（当前版本）：记忆"更好用"增强批次（10 项非多模态功能，MCP 工具由 31 增至 44）。新增 4 个后端模块：`lib/context.js`（#87 上下文回忆、#88 会话续接、#92 Markdown 导出、#96 周期摘要）、`lib/review.js`（#95 间隔召回）、`lib/maintain.js`（#89 矛盾检测、#90 健康度、#91 修剪/合并）、`lib/watch.js`（#94 标签订阅）。配套：① `lib/memory.js` `doUpdate`/`doAdd` 打通 `next_review_at`（间隔重复调度），`doAdd` 新增 `check_contradictions`/`block_on_conflict` opt-in 矛盾阻断钩子与 `watch` 推送钩子；② `lib/backend.js` 补齐 SQLite 降级路径长期遗漏的 `next_review_at` 列（迁移 + `sqliteAdd` + `rowToDoc` + `payloadToRow` + `sqliteUpdate`），修复 `insight.loadAll` 在降级模式因缺列崩溃；③ 修复 `sqliteSearch` 关键词/混合模式下 LIKE 占位符错配（"Too few parameter values"）的预存 bug；④ 修复 `conclude_session` 把 `chatJSON` 字符串当对象导致会话摘要永不保存的 bug；⑤ `lib/mcp.js` 新增 13 个工具 schema+handler，并新增 **MCP Resources**（`memory://all`、`memory://project/<encoded>`、`memory://memory/<id>`）能力。所有新功能为增量 MCP 工具/钩子，不改 `doAdd`/`doSearch` 核心契约；删除类操作默认 dry-run。多模态记忆（原 ⑦⑧）留待后续批次。
+- **v1.18.0**（当前版本）：系统增强批次（6 项）。**④ 并发队列**：`lib/queue.js` 泛化 `RequestQueue`（FIFO + 可配置信号量），embed/LLM 两独立实例，单 GPU 串行、多 GPU 并行，由 `embedding_max_concurrent`/`llm_max_concurrent`/`queue_max_size` 控制。**⑤ 分析面板**：admin.html 新增「分析面板」tab（Chart.js：记忆量趋势线图 + 标签分布甜甜圈图 + 健康度百分比）。**⑥ 文档站点**：`docs/` 目录（配置指南 + MCP 工具参考 + WorkBuddy 集成指南）。**⑦ MCP 全特性**：声明 `logging` 能力（SDK 自动处理 `SetLevel` + `sendLoggingMessage`）。**⑧ 备份工具**：`lib/backup.js`（`createBackup`/`listBackups`/`restoreBackup`），注册 3 个 MCP 工具。**② WorkBuddy Workflow**：`docs/workflow-integration.md` 开箱用例。回归 80/80 fail=0。
+
+- **v1.17.0**：记忆"更好用"++ 批次（11 项升级）。新增 5 模块：`lib/bus.js`（进程内事件总线，解耦 memory ↔ MCP Resources 实时通知）、`lib/prompts.js`（MCP Prompts 原语——`summarize_project`/`find_contradictions`/`weekly_digest`/`export_markdown`）、`lib/scheduler.js`（后台异步扫描调度器，周期性归档/矛盾检测/健康度）、`lib/archive.js`（冷记忆二级存储，按访问时间/次数判冷，kv 归档/恢复）、`lib/watch.js` 增强（推送重试指数退避 + 死信暂存）。改进：`lib/rest.js` SDK v1.29.0 `StreamableHTTPServerTransport` 替换手搓传输，单端点 `/mcp` + 同源防护 + scoped key；`lib/mcp.js` 工具 44→50+，新增 Prompts/Resources listChanged/事件总线；`lib/embed.js` 嵌入缓存 + `cacheStats()`；`lib/context.js` 混合检索默认 hybrid + 多格式导出；`lib/quality.js` 缓存命中/工具指标。关键修复：`server.notification()` Promise rejection 未 catch 导致进程 crash。回归 82/82 fail=0。多模态记忆（原 ⑦⑧）留待后续批次。
+
+- **v1.16.0**：记忆"更好用"增强批次（10 项非多模态功能，MCP 工具由 31 增至 44）。新增 4 个后端模块：`lib/context.js`（#87 上下文回忆、#88 会话续接、#92 Markdown 导出、#96 周期摘要）、`lib/review.js`（#95 间隔召回）、`lib/maintain.js`（#89 矛盾检测、#90 健康度、#91 修剪/合并）、`lib/watch.js`（#94 标签订阅）。配套：① `lib/memory.js` `doUpdate`/`doAdd` 打通 `next_review_at`（间隔重复调度），`doAdd` 新增 `check_contradictions`/`block_on_conflict` opt-in 矛盾阻断钩子与 `watch` 推送钩子；② `lib/backend.js` 补齐 SQLite 降级路径长期遗漏的 `next_review_at` 列（迁移 + `sqliteAdd` + `rowToDoc` + `payloadToRow` + `sqliteUpdate`），修复 `insight.loadAll` 在降级模式因缺列崩溃；③ 修复 `sqliteSearch` 关键词/混合模式下 LIKE 占位符错配（"Too few parameter values"）的预存 bug；④ 修复 `conclude_session` 把 `chatJSON` 字符串当对象导致会话摘要永不保存的 bug；⑤ `lib/mcp.js` 新增 13 个工具 schema+handler，并新增 **MCP Resources**（`memory://all`、`memory://project/<encoded>`、`memory://memory/<id>`）能力。所有新功能为增量 MCP 工具/钩子，不改 `doAdd`/`doSearch` 核心契约；删除类操作默认 dry-run。多模态记忆（原 ⑦⑧）留待后续批次。
 
 - **v1.15.3**：修复 4 个被早期崩溃掩盖的预存服务端缺陷（端到端测试 `test/run.js` 全过 81 项后暴露）：① **捕获管线偶发断连**——`_httpServer.timeout` 由 30s 调高至 120s，避免 LLM/嵌入推理期间（整段「无数据下发」可达 20~40s）socket 被提前销毁（客户端表现 "other side closed"）；② **`POST /api/correct/:id` 调用不存在的 `correction.correctMemory`**——改为 `correction.doCorrect({target_id, feedback, ...})`；③ **`/api/project-links` 路由调用不存在的 `projects.linkProjects/unlinkProjects`**——改为 `upsertProjectLink/removeProjectLink`，并兼容 `from/to` 与 `from_project/to_project` 两种命名；④ **`util.relEnabled` 把字符串 `'false'` 当作真值**——`include_related=false` 仍会借用跨项目记忆，现已正确归一化。另将端到端验证命令 `API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js` 写入 README 部署章。
 

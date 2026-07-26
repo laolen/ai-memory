@@ -112,6 +112,7 @@
   <div class="tab" data-pane="config" data-i18n="tab-config">配置</div>
   <div class="tab" data-pane="help" data-i18n="tab-help">使用帮助</div>
   <div class="tab" data-pane="graph" data-i18n="tab-graph">知识图谱</div>
+  <div class="tab" data-pane="dashboard" data-i18n="tab-dashboard">分析面板</div>
   <div class="tab" data-pane="links" data-i18n="tab-links">项目关系</div>
   <div class="tab" data-pane="quality" data-i18n="tab-quality">质量监控</div>
 </div>
@@ -358,6 +359,23 @@
   </div>
 </div>
 
+<!-- 分析面板 (v1.18.0 #5) -->
+<div class="pane" id="pane-dashboard">
+  <div class="card">
+    <h3 style="margin-top:0">数据分析面板</h3>
+    <p class="muted" style="margin:4px 0">记忆量趋势、标签分布、遗忘曲线、系统健康度。</p>
+    <div class="row" style="gap:16px;flex-wrap:wrap">
+      <div style="flex:1;min-width:280px"><canvas id="chart-volume" height="180"></canvas></div>
+      <div style="flex:1;min-width:280px"><canvas id="chart-tags" height="180"></canvas></div>
+    </div>
+    <div class="row" style="gap:16px;flex-wrap:wrap;margin-top:12px">
+      <div style="flex:1;min-width:280px"><canvas id="chart-forgetting" height="180"></canvas></div>
+      <div id="dash-health" style="flex:1;min-width:200px;padding:12px;background:var(--input-bg);border:1px solid var(--border);border-radius:8px"></div>
+    </div>
+    <div style="margin-top:10px"><button class="ghost" onclick="loadDashboard()">刷新</button><span id="dash-msg" class="msg" style="margin-left:10px"></span></div>
+  </div>
+</div>
+
 <!-- 质量监控 (v1.8.0) -->
 <div class="pane" id="pane-quality">
   <div class="card">
@@ -485,6 +503,7 @@
     <p id="login-msg" class="muted" style="font-size:12px;margin-top:8px"></p>
   </div>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 
@@ -494,7 +513,7 @@ function getLocale() { return localStorage.getItem(_LOCALE_KEY) || 'zh'; }
 function setLocale(l) { localStorage.setItem(_LOCALE_KEY, l); }
 const __lang = {
   zh: {
-    'tab-data':'数据管理', 'tab-config':'配置', 'tab-help':'使用帮助', 'tab-graph':'知识图谱', 'tab-links':'项目关系', 'tab-quality':'质量监控',
+    'tab-data':'数据管理', 'tab-config':'配置', 'tab-help':'使用帮助', 'tab-graph':'知识图谱', 'tab-dashboard':'分析面板', 'tab-links':'项目关系', 'tab-quality':'质量监控',
     'hdr-title':'AI Memory 管理界面',
     'btn-save':'保存并重启服务', 'btn-diagnose':'测试连接', 'btn-test-db':'测试 Qdrant 连接', 'btn-test-emb':'测试嵌入模型', 'btn-test-llm':'测试捕获 LLM', 'btn-test-kg':'测试图谱抽取',
     'btn-capture':'开始捕获', 'btn-refresh':'刷新', 'btn-search':'搜索', 'btn-reset':'重置', 'btn-export':'导出', 'btn-import':'导入',
@@ -571,7 +590,7 @@ const __lang = {
     'el-186':'JSON 格式错误：{f}', 'el-187':'URL 格式不正确：{f}', 'el-188':'数值超出范围：{f}', 'el-189':'请先修正配置错误再保存',
   },
   en: {
-    'tab-data':'Data', 'tab-config':'Config', 'tab-help':'Help', 'tab-graph':'Knowledge Graph', 'tab-links':'Project Links', 'tab-quality':'Quality',
+    'tab-data':'Data', 'tab-config':'Config', 'tab-help':'Help', 'tab-graph':'Knowledge Graph', 'tab-dashboard':'Dashboard', 'tab-links':'Project Links', 'tab-quality':'Quality',
     'hdr-title':'AI Memory Admin',
     'btn-save':'Save & Restart', 'btn-diagnose':'Test Connection', 'btn-test-db':'Test Qdrant', 'btn-test-emb':'Test Embedding', 'btn-test-llm':'Test LLM', 'btn-test-kg':'Test KG',
     'btn-capture':'Capture', 'btn-refresh':'Refresh', 'btn-search':'Search', 'btn-reset':'Reset', 'btn-export':'Export', 'btn-import':'Import',
@@ -959,6 +978,7 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   if (t.dataset.pane === 'help') loadDocs();
   if (t.dataset.pane === 'links') loadLinks();
   if (t.dataset.pane === 'quality') loadMetrics();
+  if (t.dataset.pane === 'dashboard') loadDashboard();
 });
 
 function setStatus(h) {
@@ -1656,6 +1676,81 @@ setInterval(() => {
   const qp = document.getElementById('pane-quality');
   if (qp && qp.classList.contains('active')) { loadMetrics(); loadWebhookRecent(); }
 }, 5000);
+
+// ---- 分析面板 (v1.18.0 #5) ----
+let dashCharts = {};
+async function loadDashboard() {
+  const msg = $('#dash-msg');
+  msg.textContent = '加载中…';
+  try {
+    const [m] = await Promise.all([
+      (await fetch('/api/metrics')).json(),
+    ]);
+    const metricsData = m;
+    // 清理旧图表
+    Object.values(dashCharts).forEach(c => { try { c.destroy(); } catch (e) {} });
+    dashCharts = {};
+
+    // 1. 记忆量趋势（按日统计）
+    const byDay = (metricsData.by_day || []).slice(-14);
+    if (byDay.length && typeof Chart !== 'undefined') {
+      dashCharts.volume = new Chart(document.getElementById('chart-volume'), {
+        type: 'line',
+        data: {
+          labels: byDay.map(r => r.day.slice(5)),
+          datasets: [{
+            label: '请求数',
+            data: byDay.map(r => r.total),
+            borderColor: '#2f81f7',
+            backgroundColor: 'rgba(47,129,247,0.1)',
+            fill: true,
+            tension: 0.3,
+          }]
+        },
+        options: { responsive: true, maintainAspectRatio: false,
+          plugins: { title: { display: true, text: '近 14 天请求趋势', color: 'var(--text)' } },
+          scales: { x: { ticks: { color: 'var(--muted)' } }, y: { ticks: { color: 'var(--muted)' }, beginAtZero: true } }
+        }
+      });
+    }
+
+    // 2. 标签分布 — 从量化的 /api/memories 抓最近记忆的 tag
+    try {
+      const sr = await (await fetch('/api/memories?limit=100&mode=keyword')).json();
+      const tags = {};
+      (sr.rows || []).forEach(m => (m.tags || []).forEach(t => { tags[t] = (tags[t] || 0) + 1; }));
+      const sorted = Object.entries(tags).sort((a, b) => b[1] - a[1]).slice(0, 10);
+      if (sorted.length && typeof Chart !== 'undefined') {
+        dashCharts.tags = new Chart(document.getElementById('chart-tags'), {
+          type: 'doughnut',
+          data: {
+            labels: sorted.map(s => s[0]),
+            datasets: [{ data: sorted.map(s => s[1]), backgroundColor: ['#2f81f7','#3fb950','#d29922','#f85149','#bc8cff','#79c0ff','#ff7b72','#a5d6ff','#c9d1d9','#7ee787'] }]
+          },
+          options: { responsive: true, maintainAspectRatio: false,
+            plugins: { title: { display: true, text: '高频标签 TOP 10', color: 'var(--text)' }, legend: { position: 'right', labels: { color: 'var(--muted)', boxWidth: 12 } } }
+          }
+        });
+      }
+    } catch (e) {}
+
+    // 3. 健康度概要
+    const es = metricsData.err_stats || {};
+    const totalErr = Object.values(es).reduce((a, b) => a + (b || 0), 0);
+    const healthPct = Math.max(0, Math.min(100, 100 - totalErr * 5));
+    const healthDiv = document.getElementById('dash-health');
+    healthDiv.innerHTML = `
+      <div style="font-weight:500;margin-bottom:8px">系统健康度</div>
+      <div style="font-size:32px;font-weight:600;color:${healthPct > 80 ? 'var(--ok)' : healthPct > 50 ? 'var(--warn)' : 'var(--danger)'}">${healthPct}%</div>
+      <div class="row" style="gap:8px;margin-top:8px;font-size:12px;color:var(--muted)">
+        <span>工具调用: ${metricsData.mcp_tools ? metricsData.mcp_tools.total : 'N/A'}</span>
+        <span>错误: ${totalErr}</span>
+      </div>
+    `;
+
+    msg.textContent = '';
+  } catch (e) { msg.textContent = '加载失败: ' + e.message; }
+}
 
 // ---- Webhook 最近投递 (v1.12.0) ----
 async function loadWebhookRecent() {

@@ -1498,10 +1498,10 @@ async function diagnose() {
   try {
     const r = await fetch('/api/diagnose', { method: 'POST' });
     const j = await r.json();
-    const db = j.qdrant || {}, emb = j.embedding || {};
-    const dbTxt = db.ok ? t('test-qdrant-ok', { c: (db.collection || db.index || ''), d: (db.docs != null ? db.docs : '?') }) : t('test-qdrant-bad', { e: (db.error || db.reason || t('test-notconn')) });
-    const embTxt = emb.ok ? t('test-emb-ok', { m: emb.model, dims: emb.dims, ms: emb.ms }) : t('test-emb-bad', { e: (emb.error || emb.reason || t('test-unavail')) });
-    showMsg('#cfg-msg', dbTxt + '　|　' + embTxt, 'ok');
+    const db = j.database || j.qdrant || {}, emb = j.embedding || {};
+    const dbTxt = db.ok ? ('✅ ' + (db.message || 'Qdrant OK')) : ('❌ ' + (db.message || db.error || t('test-notconn')));
+    const embTxt = emb.ok ? ('✅ ' + (emb.message || 'Embedding OK')) : ('❌ ' + (emb.message || emb.error || t('test-unavail')));
+    showMsg('#cfg-msg', dbTxt + '　|　' + embTxt, db.ok && emb.ok ? 'ok' : 'err');
   } catch (e) { showMsg('#cfg-msg', t('msg-test-fail') + ': ' + e, 'err'); }
 }
 

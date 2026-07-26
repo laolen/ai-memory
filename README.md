@@ -128,7 +128,7 @@ ssh root@192.168.110.128 'systemctl stop ai-memory && rm -rf /opt/ai-memory && t
 ### 2.9 管理界面增强（英文双语 / 深浅主题 / 响应式）
 - **英文模式彻底双语**：所有 JS 动态中文串、静态 inline 标签、select option 全部走 `t()` i18n（zh+en 双词典）；切换语言时动态渲染内容（帮助页工具描述、表格、弹窗等）会重拉或重翻，保证中英文都完整。
 - **深浅主题切换 + 响应式**：CSS 抽成 `:root`（深色默认）+ `[data-theme="light"]`（浅色）双调色板，右上角按钮切换并 localStorage 持久化；`@media` 响应式适配窄屏（头部换行、工具栏/行纵向堆叠、表格横向滚动）。
-- **使用帮助页**：「使用帮助」Tab 实时拉取 `/api/docs`，渲染 MCP 工具清单（含参数 / 必填 / 枚举 / 中英文描述）、REST API 表、配置项说明（28 项）、检索模式、部署架构与注意事项，内容随服务端版本自动对齐。
+- **使用帮助页**：「使用帮助」Tab 实时拉取 `/api/docs`，渲染 MCP 工具清单（含参数 / 必填 / 枚举 / 中英文描述）、REST API 表、配置项说明（30 项）、检索模式、部署架构与注意事项，内容随服务端版本自动对齐。
 
 ---
 
@@ -318,7 +318,7 @@ API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js
 
 - `BASE`：被测服务地址；`API_KEY`：服务端 `config.json` 中 `api_keys` 之一（测试助手自动附带 `Authorization: Bearer` 与 `X-Requested-With: ai-memory` 头）。
 - 长捕获管线：LLM/嵌入推理期间对客户端「无数据下发」，整段空闲可达 20~40s，故依赖服务侧 socket 超时已调高（≥120s），否则客户端会报 "other side closed"。
-- 期望输出：`===== OVERALL ok=N fail=0 =====`（N 随套件增减，v1.18.0 基线 80 项全过）。任一 `fail>0` 即阻断。
+- 期望输出：`===== OVERALL ok=N fail=0 =====`（N 随套件增减，v1.19.0 基线 80 项全过）。任一 `fail>0` 即阻断。
 
 ---
 
@@ -346,6 +346,8 @@ API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js
 | `capture_min_chars` | `20` | 启发式单句最小长度 |
 | `capture_keywords` | 空 | 关键词过滤（空=不过滤） |
 | `capture_max_per_call` | `20` | 单次捕获最大条数 |
+| `verify_enabled` | `true` | 虚假完成检测开关（v1.19.0） |
+| `verify_base_url` | 空 | endpoint 验证基址前缀（v1.19.0，如 `http://192.168.110.128:8765`） |
 
 > `api_key` 在 `/api/config` 返回中被掩码为 `******`；保存时仅当值不为 `******` 才更新（掩码不会覆盖真值）。
 
@@ -428,11 +430,23 @@ API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js
 
 > v1.18.0 同时引入 **并发请求队列**（`lib/queue.js`，可配置单 GPU 串行/多 GPU 并行）、**分析面板**（admin.html Dashboard tab）、**文档站点**（`docs/` 目录）。
 
+### v1.19.0 新增工具（虚假完成检测闭环，共 3 个）
+
+| 工具 | 说明 |
+|------|------|
+| `run_verification` | 手动触发一次虚假完成全量检测：扫描带 `promise`/`impl-done`/`completed` 标签的记忆，验证 `file:`/`commit:`/`endpoint:` 证据，失败的自动创建 `fix-needed` 修复任务，已修复的标记 `verified` |
+| `list_fix_needed` | 列出所有待修复的虚假完成（`fix-needed` 标签），支持 `project` 过滤和 `limit` |
+| `resolve_fix` | AI 修复后调用，将记忆标签从 `fix-needed` 改为 `fixed`，下次验证通过则自动标记 `verified` |
+
+> v1.19.0 引入 **虚假完成自动检测闭环**（`lib/verify.js`）：调度器周期性扫描"声称已完成"的记忆 → 验证证据（文件存在性 / git commit / HTTP 端点 404）→ 失败则自动创建 `fix-needed` 修复任务 → AI 轮询发现 → `resolve_fix` 标记 → 下次扫描自动重验。这是记忆系统从"被动存储"走向"主动质量保证"的关键能力——当 AI 声称完成但实际没做时，系统自动检测、派发修复任务、修复后自动重验。
+
 ---
 
 ## 十一、版本
 
-- **v1.18.0**（当前版本）：系统增强批次（6 项）。**④ 并发队列**：`lib/queue.js` 泛化 `RequestQueue`（FIFO + 可配置信号量），embed/LLM 两独立实例，单 GPU 串行、多 GPU 并行，由 `embedding_max_concurrent`/`llm_max_concurrent`/`queue_max_size` 控制。**⑤ 分析面板**：admin.html 新增「分析面板」tab（Chart.js：记忆量趋势线图 + 标签分布甜甜圈图 + 健康度百分比）。**⑥ 文档站点**：`docs/` 目录（配置指南 + MCP 工具参考 + WorkBuddy 集成指南）。**⑦ MCP 全特性**：声明 `logging` 能力（SDK 自动处理 `SetLevel` + `sendLoggingMessage`）。**⑧ 备份工具**：`lib/backup.js`（`createBackup`/`listBackups`/`restoreBackup`），注册 3 个 MCP 工具。**② WorkBuddy Workflow**：`docs/workflow-integration.md` 开箱用例。回归 80/80 fail=0。
+- **v1.19.0**（当前版本）：虚假完成自动检测闭环。新增 `lib/verify.js` 模块——调度器周期性扫描带 `promise`/`impl-done`/`completed` 标签的记忆，逐一验证证据（`file:`→`fs.existsSync`、`commit:`→`git log --oneline`、`endpoint:`→HEAD 请求检查 404）；验证失败的记忆自动打 `fix-needed` 标签并创建修复任务（内容记录失败原因与缺失证据）；AI 轮询 `list_fix_needed` 发现待修复项 → 修复后调 `resolve_fix` 标记为 `fixed` → 下次扫描自动重验，通过则标记 `verified`。MCP 新增 3 个工具（`run_verification`/`list_fix_needed`/`resolve_fix`）。`lib/scheduler.js` `scanOnce()` 中集成 `verify.scanAndCreateFixes()` 调用。配置项新增 `verify_enabled`（默认 true）、`verify_base_url`（用于 endpoint 验证的基址前缀）。核心价值：当 AI 声称完成但实际没做时，系统自动检测、派发修复任务、修复后自动重验——记忆系统从被动存储走向主动质量保证。回归 80/80 fail=0。
+
+- **v1.18.0**：系统增强批次（6 项）。**④ 并发队列**：`lib/queue.js` 泛化 `RequestQueue`（FIFO + 可配置信号量），embed/LLM 两独立实例，单 GPU 串行、多 GPU 并行，由 `embedding_max_concurrent`/`llm_max_concurrent`/`queue_max_size` 控制。**⑤ 分析面板**：admin.html 新增「分析面板」tab（Chart.js：记忆量趋势线图 + 标签分布甜甜圈图 + 健康度百分比）。**⑥ 文档站点**：`docs/` 目录（配置指南 + MCP 工具参考 + WorkBuddy 集成指南）。**⑦ MCP 全特性**：声明 `logging` 能力（SDK 自动处理 `SetLevel` + `sendLoggingMessage`）。**⑧ 备份工具**：`lib/backup.js`（`createBackup`/`listBackups`/`restoreBackup`），注册 3 个 MCP 工具。**② WorkBuddy Workflow**：`docs/workflow-integration.md` 开箱用例。回归 80/80 fail=0。
 
 - **v1.17.0**：记忆"更好用"++ 批次（11 项升级）。新增 5 模块：`lib/bus.js`（进程内事件总线，解耦 memory ↔ MCP Resources 实时通知）、`lib/prompts.js`（MCP Prompts 原语——`summarize_project`/`find_contradictions`/`weekly_digest`/`export_markdown`）、`lib/scheduler.js`（后台异步扫描调度器，周期性归档/矛盾检测/健康度）、`lib/archive.js`（冷记忆二级存储，按访问时间/次数判冷，kv 归档/恢复）、`lib/watch.js` 增强（推送重试指数退避 + 死信暂存）。改进：`lib/rest.js` SDK v1.29.0 `StreamableHTTPServerTransport` 替换手搓传输，单端点 `/mcp` + 同源防护 + scoped key；`lib/mcp.js` 工具 44→50+，新增 Prompts/Resources listChanged/事件总线；`lib/embed.js` 嵌入缓存 + `cacheStats()`；`lib/context.js` 混合检索默认 hybrid + 多格式导出；`lib/quality.js` 缓存命中/工具指标。关键修复：`server.notification()` Promise rejection 未 catch 导致进程 crash。回归 82/82 fail=0。多模态记忆（原 ⑦⑧）留待后续批次。
 

@@ -1091,11 +1091,11 @@ function clearAuthKey() { setAuthKey(''); location.reload(); }
 const _origFetch = window.fetch;
 window.fetch = function(url, opts) {
   opts = opts || {};
+  opts.headers = opts.headers || {};
+  opts.headers['X-Requested-With'] = 'ai-memory'; // 始终加 CSRF 头（不论是否登录）
   const key = getAuthKey();
   if (key) {
-    opts.headers = opts.headers || {};
     opts.headers['Authorization'] = 'Bearer ' + key;
-    opts.headers['X-Requested-With'] = 'ai-memory';
   }
   return _origFetch.call(this, url, opts).then(async r => {
     if (r.status === 401 && url.toString().startsWith('/api/')) {

@@ -79,5 +79,10 @@
   "search_cache_ttl_ms": 60000,
   "search_cache_max": 200,
   "suggest_related": true,
-  "suggest_related_limit": 5
+  "suggest_related_limit": 5,
+  "salience_w_imp": 0.5,
+  "salience_w_acc": 0.5,
+  "salience_access_k": 10,
+  "salience_score_w": 0.7,
+  "auto_backup_interval_hours": 0
 }

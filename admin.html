@@ -196,6 +196,7 @@
     <div class="cfg-tab" onclick="switchCfgTab(2)" data-i18n="cfg-tab-quality">🎯 记忆质量</div>
     <div class="cfg-tab" onclick="switchCfgTab(3)" data-i18n="cfg-tab-graph">🔗 知识图谱</div>
     <div class="cfg-tab" onclick="switchCfgTab(4)" data-i18n="cfg-tab-advanced">⚙️ 高级与安全</div>
+    <div class="cfg-tab" onclick="switchCfgTab(5)" data-i18n="cfg-tab-ops">📊 运维</div>
   </div>
 
   <!-- Pane 0: 存储与向量 -->
@@ -365,7 +366,14 @@
           <div style="max-width:150px"><label data-i18n="el-78">MMR λ (0=纯语义 1=纯多样)</label><input id="c-mmr-lambda" type="number" step="0.05" min="0" max="1" value="0.3" /></div>
         </div>
         <div class="cfg-grid" style="margin-top:4px">
-          <div><label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0"><input type="checkbox" id="c-salience" style="width:auto" /> <span data-i18n="cfg-salience">强化评分 (salience)</span></label></div>
+          <div><label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0"><input type="checkbox" id="c-salience" style="width:auto" /> <span data-i18n="cfg-salience">强化评分 (salience)</span></label>
+            <div class="cfg-grid" style="margin-top:4px;font-size:12px">
+              <div><label>权重-重要性</label><input id="c-sal-w-imp" type="number" step="0.05" min="0" max="1" value="0.5" style="font-size:12px;padding:5px 8px" /></div>
+              <div><label>权重-访问</label><input id="c-sal-w-acc" type="number" step="0.05" min="0" max="1" value="0.5" style="font-size:12px;padding:5px 8px" /></div>
+              <div><label>访问归一化分母</label><input id="c-sal-access-k" type="number" step="1" min="1" value="10" style="font-size:12px;padding:5px 8px" /></div>
+              <div><label>分数融合权重</label><input id="c-sal-score-w" type="number" step="0.05" min="0" max="1" value="0.7" style="font-size:12px;padding:5px 8px" /></div>
+            </div>
+          </div>
           <div><label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0"><input type="checkbox" id="c-related-proj" style="width:auto" /> <span data-i18n="cfg-related-proj">跨项目记忆关联</span></label></div>
         </div>
         <div class="cfg-grid" style="margin-top:4px">
@@ -440,6 +448,17 @@
       </div>
     </div>
   </div>
+
+  <!-- Pane 5: 运维 -->
+  <div class="cfg-pane">
+    <div class="card">
+      <h3 style="margin-top:0">📊 运维监控 (v1.21.0)</h3>
+      <p class="muted" style="margin:4px 0">搜索缓存命中率、调度器执行历史、错误计数。</p>
+      <div style="margin-bottom:8px"><button class="ghost" onclick="loadOps()">刷新</button></div>
+      <div id="ops-body" style="font-size:13px;color:var(--muted)">加载中…</div>
+    </div>
+  </div>
+
 </div>
 
 <!-- 使用帮助 -->
@@ -550,6 +569,17 @@
     <div id="ins-forget-body" style="margin-top:10px"></div>
   </div>
 
+  <div class="card" style="margin-top:18px">
+    <h3 style="margin-top:0">🔄 备份管理 (v1.21.0)</h3>
+    <p class="muted" style="margin:4px 0">一键备份全部记忆，恢复、下载或查看已有备份。</p>
+    <div class="toolbar" style="margin-bottom:8px">
+      <button onclick="doBackup()" data-i18n="btn-backup-now">立即备份</button>
+      <button class="ghost" onclick="loadBackups()" data-i18n="btn-refresh">刷新列表</button>
+      <span id="bak-msg" class="msg" style="flex:1;margin:0;min-width:160px"></span>
+    </div>
+    <div id="bak-list" style="font-size:13px;color:var(--muted)">加载中…</div>
+  </div>
+
 </div>
 </div>
 
@@ -639,7 +669,8 @@ const __lang = {
     'lbl-capture-text':'粘贴对话/文本', 'lbl-capture-user':'用户', 'lbl-capture-project':'项目', 'lbl-capture-tags':'标签',
     'lbl-qdrant-url':'Qdrant 地址', 'lbl-emb-url':'Embedding 端点', 'lbl-emb-model':'嵌入模型', 'lbl-llm-url':'LLM 端点', 'lbl-llm-model':'LLM 模型',
     'sect-advanced':'高级配置', 'sect-advanced-desc':'MMR、Webhook、Reranker、API 鉴权密钥等',
-    'cfg-tab-storage':'💾 存储与向量', 'cfg-tab-capture':'📥 自动捕获', 'cfg-tab-quality':'🎯 记忆质量', 'cfg-tab-graph':'🔗 知识图谱', 'cfg-tab-advanced':'⚙️ 高级与安全',
+    'cfg-tab-storage':'💾 存储与向量', 'cfg-tab-capture':'📥 自动捕获', 'cfg-tab-quality':'🎯 记忆质量', 'cfg-tab-graph':'🔗 知识图谱', 'cfg-tab-advanced':'⚙️ 高级与安全', 'cfg-tab-ops':'📊 运维',
+    'btn-backup-now':'立即备份',
     'sect-adv-retrieval':'检索增强', 'sect-adv-webhook':'Webhook 推送', 'sect-adv-storage':'存储与备份', 'sect-adv-auth':'鉴权与策略', 'el-58b':'文件监听',
     'cfg-quality-auto':'启用质量自动化（过期检测 + 矛盾修复 + 置信度衰减）', 'lbl-stale-days':'过期事实判定天数', 'lbl-decay-days':'置信度衰减天数', 'lbl-decay-rate':'置信度衰减率',
     'cfg-ssrf':'启用 SSRF 防护（拒绝出站请求到内网 IP）', 'lbl-ssrf-allow':'SSRF 白名单（逗号分隔，如 127.0.0.1,localhost）',
@@ -722,7 +753,8 @@ const __lang = {
     'lbl-capture-text':'Paste text to capture', 'lbl-capture-user':'User', 'lbl-capture-project':'Project', 'lbl-capture-tags':'Tags',
     'lbl-qdrant-url':'Qdrant URL', 'lbl-emb-url':'Embedding Endpoint', 'lbl-emb-model':'Embedding Model', 'lbl-llm-url':'LLM Endpoint', 'lbl-llm-model':'LLM Model',
     'sect-advanced':'Advanced Config', 'sect-advanced-desc':'MMR, Webhook, Reranker, API Keys, etc.',
-    'cfg-tab-storage':'💾 Storage & Vector', 'cfg-tab-capture':'📥 Capture', 'cfg-tab-quality':'🎯 Quality', 'cfg-tab-graph':'🔗 Knowledge Graph', 'cfg-tab-advanced':'⚙️ Advanced & Security',
+    'cfg-tab-storage':'💾 Storage & Vector', 'cfg-tab-capture':'📥 Capture', 'cfg-tab-quality':'🎯 Quality', 'cfg-tab-graph':'🔗 Knowledge Graph', 'cfg-tab-advanced':'⚙️ Advanced & Security', 'cfg-tab-ops':'📊 Ops',
+    'btn-backup-now':'Backup Now',
     'sect-adv-retrieval':'Retrieval', 'sect-adv-webhook':'Webhook', 'sect-adv-storage':'Storage & Backup', 'sect-adv-auth':'Auth & Policy', 'el-58b':'File Watch',
     'cfg-quality-auto':'Enable quality automation (stale detection + conflict repair + confidence decay)', 'lbl-stale-days':'Stale fact threshold (days)', 'lbl-decay-days':'Confidence decay days', 'lbl-decay-rate':'Confidence decay rate',
     'cfg-ssrf':'Enable SSRF protection (block outbound requests to private IPs)', 'lbl-ssrf-allow':'SSRF allowlist (comma-separated)',
@@ -1322,6 +1354,11 @@ async function loadConfig() {
   $('#c-cache-max').value = (c.search_cache_max != null) ? c.search_cache_max : 200;
   $('#c-suggest').checked = (c.suggest_related !== false);
   $('#c-suggest-limit').value = (c.suggest_related_limit != null) ? c.suggest_related_limit : 5;
+  // v1.21.0: salience 权重
+  $('#c-sal-w-imp').value = (c.salience_w_imp != null) ? c.salience_w_imp : 0.5;
+  $('#c-sal-w-acc').value = (c.salience_w_acc != null) ? c.salience_w_acc : 0.5;
+  $('#c-sal-access-k').value = (c.salience_access_k != null) ? c.salience_access_k : 10;
+  $('#c-sal-score-w').value = (c.salience_score_w != null) ? c.salience_score_w : 0.7;
 }
 
 function validateConfig() {
@@ -1426,6 +1463,11 @@ async function saveConfig() {
     search_cache_max: parseInt($('#c-cache-max').value) || 200,
     suggest_related: $('#c-suggest').checked,
     suggest_related_limit: parseInt($('#c-suggest-limit').value) || 5,
+    // v1.21.0: salience 权重
+    salience_w_imp: Number($('#c-sal-w-imp').value) || 0.5,
+    salience_w_acc: Number($('#c-sal-w-acc').value) || 0.5,
+    salience_access_k: Number($('#c-sal-access-k').value) || 10,
+    salience_score_w: Number($('#c-sal-score-w').value) || 0.7,
   };
   showMsg('#cfg-msg', t('msg-saving'), 'info');
   const r = await fetch('/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
@@ -2035,6 +2077,80 @@ document.addEventListener('click', (e) => {
   const tab = e.target.closest && e.target.closest('.tab[data-pane="quality"]');
   if (tab && !_insightLoaded) { _insightLoaded = true; loadDuplicates(); loadCluster(); loadForget(); }
 });
+
+// ---- v1.21.0: 备份管理 ----
+async function doBackup() {
+  showMsg('#bak-msg', '备份中…', 'info');
+  try {
+    const r = await fetch('/api/backup', { method: 'POST' });
+    const j = await r.json();
+    if (j.ok) {
+      showMsg('#bak-msg', '✅ 备份完成：' + j.file + '（' + j.count + ' 条，' + fmtSize(j.size) + '）', 'ok');
+      loadBackups();
+    } else { showMsg('#bak-msg', '❌ ' + (j.message || j.error), 'err'); }
+  } catch (e) { showMsg('#bak-msg', '❌ ' + e.message, 'err'); }
+}
+async function loadBackups() {
+  try {
+    const r = await fetch('/api/backups'); const list = await r.json();
+    if (!list.length) { $('#bak-list').innerHTML = '<span class="muted">暂无备份</span>'; return; }
+    let html = '<table><tr><th>文件名</th><th>大小</th><th>时间</th><th>操作</th></tr>';
+    list.forEach(b => {
+      html += '<tr><td>' + esc(b.name) + '</td><td>' + fmtSize(b.size) + '</td><td>' + esc(b.created_at || '').replace('T',' ').slice(0,19) + '</td>'
+        + '<td class="actions">';
+      if (b.exists) html += '<button onclick="downloadBackup(\'' + esc(b.name) + '\')" style="margin:0;padding:3px 8px;font-size:11px">下载</button>'
+        + '<button class="ghost" onclick="restoreBackup(\'' + esc(b.name) + '\')" style="margin:0 0 0 4px;padding:3px 8px;font-size:11px">恢复</button>';
+      else html += '<span class="muted">文件已不存在</span>';
+      html += '</td></tr>';
+    });
+    html += '</table>';
+    $('#bak-list').innerHTML = html;
+  } catch (e) { $('#bak-list').innerHTML = '<span class="err">加载失败: ' + e.message + '</span>'; }
+}
+function downloadBackup(name) {
+  window.open('/api/backups/download/' + encodeURIComponent(name), '_blank');
+}
+async function restoreBackup(name) {
+  if (!confirm('确认从备份 "' + name + '" 恢复？当前记忆将被追加（不删除原有）。')) return;
+  try {
+    const r = await fetch('/api/backups/restore', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+    const j = await r.json();
+    if (j.ok) showMsg('#bak-msg', '✅ 恢复完成：导入 ' + j.imported + ' 条，失败 ' + (j.errors||0) + ' 条', 'ok');
+    else showMsg('#bak-msg', '❌ ' + (j.error || '恢复失败'), 'err');
+  } catch (e) { showMsg('#bak-msg', '❌ ' + e.message, 'err'); }
+}
+function fmtSize(b) {
+  if (!b) return '0 B';
+  const u = ['B','KB','MB','GB']; let i = 0;
+  for (; b >= 1024 && i < 3; b /= 1024, i++);
+  return (i > 0 ? b.toFixed(1) : b) + ' ' + u[i];
+}
+function esc(s) { if (s == null) return ''; return String(s).replace(/[&<>"']/g, ''); }
+
+// ---- v1.21.0: 运维监控 ----
+async function loadOps() {
+  try {
+    const r1 = fetch('/api/scheduler/history'); const r2 = fetch('/api/search-cache/stats');
+    const [h, cs] = await Promise.all([r1.then(x=>x.json()), r2.then(x=>x.json())]);
+    let html = '<div class="cfg-grid" style="margin-bottom:10px">'
+      + '<div class="livecard" style="min-width:0"><div class="lv">' + (cs.hits||0) + '</div><div class="ll">缓存命中</div></div>'
+      + '<div class="livecard" style="min-width:0"><div class="lv">' + (cs.misses||0) + '</div><div class="ll">缓存未命中</div></div>'
+      + '<div class="livecard" style="min-width:0"><div class="lv">' + (cs.size||0) + '</div><div class="ll">当前缓存条数</div></div>'
+      + '</div>';
+    if (Array.isArray(h) && h.length) {
+      html += '<table><tr><th>时间</th><th>状态</th><th>健康</th><th>到期数</th><th>矛盾</th><th>自动备份</th></tr>';
+      h.slice(0, 15).forEach(s => {
+        const t = (s.at || '').replace('T',' ').slice(0,19);
+        html += '<tr><td>' + esc(t) + '</td><td>' + (s.ok ? '✅' : '❌') + '</td><td>' + (s.health ? s.health.ok + '/' + s.health.total : '-') + '</td>'
+          + '<td>' + (s.due_count != null ? s.due_count : '-') + '</td>'
+          + '<td>' + (s.conflict_count != null ? s.conflict_count + '/' + (s.conflict_checked||0) : '-') + '</td>'
+          + '<td>' + (s.auto_backup ? '✅ ' + s.auto_backup.count + '条' : '-') + '</td></tr>';
+      });
+      html += '</table>';
+    } else { html += '<p class="muted">暂无调度器执行记录（需等待调度器运行一次）</p>'; }
+    $('#ops-body').innerHTML = html;
+  } catch (e) { $('#ops-body').innerHTML = '<span class="err">加载失败: ' + e.message + '</span>'; }
+}
 
 // 初始
 runSearch();

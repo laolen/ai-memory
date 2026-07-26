@@ -55,6 +55,18 @@
   .toolbar { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px; }
   .toolbar > div { flex: 1; min-width: 160px; }
   .toolbar button { margin-top: 0; }
+  /* 配置页子标签 */
+  .cfg-tabs { display:flex; gap:2px; margin-bottom:14px; border-bottom:1px solid var(--border); flex-wrap:wrap }
+  .cfg-tab { padding:8px 14px; cursor:pointer; border:1px solid transparent; border-bottom:none; border-radius:6px 6px 0 0; color:var(--muted); font-size:13px; user-select:none; white-space:nowrap }
+  .cfg-tab:hover { color:var(--text); background:var(--border-strong) }
+  .cfg-tab.active { color:var(--text); background:var(--panel); border-color:var(--border); margin-bottom:-1px; font-weight:600 }
+  .cfg-pane { display:none }
+  .cfg-pane.active { display:block }
+  .cfg-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; align-items:start }
+  .cfg-grid > div { min-width:0 }
+  .cfg-section { border:1px solid var(--border); border-radius:8px; padding:14px; margin-bottom:14px }
+  .cfg-section-title { font-weight:600; font-size:14px; margin:0 0 4px; color:var(--accent) }
+  .cfg-section-desc { font-size:12px; color:var(--muted); margin:0 0 10px }
   .table-wrap { width: 100%; overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 13px; }
   th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border-strong); vertical-align: top; }
@@ -171,155 +183,262 @@
 
 <!-- 配置 -->
 <div class="pane" id="pane-config">
-  <div class="card">
-    <h3 style="margin-top:0" data-i18n="el-40">向量数据库 (Qdrant)</h3>
-    <p class="muted" style="margin:4px 0" data-i18n="el-41">Qdrant 无需用户名 / 密码（内网部署默认无鉴权；若日后启用 API Key 再补字段）。</p>
-    <div class="row">
-      <div><label data-i18n="lbl-qdrant-url">Qdrant 地址</label><input id="c-qdrant-url" placeholder="http://192.168.110.248:6333" /></div>
-      <div><label data-i18n="el-42">集合名 (collection)</label><input id="c-qdrant-coll" placeholder="memories" /></div>
-    </div>
-    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('db')" data-i18n="btn-test-db">测试 Qdrant 连接</button><span id="t-db" class="test-msg"></span></div>
-    <h3 data-i18n="el-43">模型 API (嵌入/向量)</h3>
-    <p class="muted" style="margin:4px 0" data-i18n="el-44">嵌入支持本地（Ollama/llama-embed，API Key 留空）或云端（OpenAI 兼容 /v1/embeddings，填对应 Key）。</p>
-    <div class="row">
-      <div><label data-i18n="el-45">Embedding 接口 URL</label><input id="c-emb-url" placeholder="http://127.0.0.1:11434/api/embed 或 https://api.openai.com/v1/embeddings" /></div>
-      <div><label data-i18n="el-46">模型名</label><input id="c-emb-model" placeholder="nomic-embed-text 或 text-embedding-3-small" /></div>
-    </div>
-    <div><label data-i18n="el-57">API Key（云端才填，本地留空）</label><input id="c-emb-key" type="password" placeholder="云端 Embedding 的 Bearer Token；本地 Ollama 留空" /></div>
-    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('embedding')" data-i18n="btn-test-emb">测试嵌入模型</button><span id="t-embedding" class="test-msg"></span></div>
-    <h3 data-i18n="el-48">记忆去重 / 合并</h3>
-    <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:12px 0 4px">
-      <input type="checkbox" id="c-dedup" style="width:auto" /> <span data-i18n="cfg-dedup">启用记忆合并（相似内容自动合并，避免重复）</span>
-    </label>
-    <div style="max-width:200px"><label data-i18n="el-49">合并相似度阈值 (0.7~1.0)</label><input id="c-dedup-th" type="number" step="0.01" min="0.7" max="1.0" value="0.92" /></div>
-    <h3 data-i18n="el-50">时序感知</h3>
-    <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:12px 0 4px">
-      <input type="checkbox" id="c-recency" style="width:auto" /> <span data-i18n="cfg-recency">启用检索时效加权（越近的记忆得分越高）</span>
-    </label>
-    <div style="max-width:200px"><label data-i18n="el-51">时效半衰期 (天)</label><input id="c-recency-hl" type="number" step="1" min="1" value="30" /></div>
-    <div style="max-width:200px"><label data-i18n="el-52">记忆过期天数 (0=不过期)</label><input id="c-expiry" type="number" step="1" min="0" value="0" /></div>
-    <div style="max-width:240px"><label data-i18n="el-53">生命周期策略</label>
-      <select id="c-lifecycle"><option value="none" data-i18n="opt-none-note">none（不自动过期）</option><option value="expire" data-i18n="opt-expire">expire（到期清理）</option></select></div>
-    <h3 data-i18n="el-54">自动捕获</h3>
-    <p class="muted" style="margin:4px 0" data-i18n="el-55">把原始对话/文本自动提炼成记忆。配 LLM 走智能提取，否则启发式按句切分去重入库。所有捕获项打 auto-captured 标签。</p>
-    <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:8px 0 4px">
-      <input type="checkbox" id="c-llm" style="width:auto" /> <span data-i18n="cfg-llm">启用 LLM 智能提取（需填写下方 chat 端点）</span>
-    </label>
-    <p class="muted" style="margin:8px 0 4px" data-i18n="el-56">捕获 LLM 支持本地（Ollama，Key 留空）或云端（DeepSeek/OpenAI/硅基流动，填端点 + Key）。</p>
-    <div class="row">
-      <div><label data-i18n="lbl-llm-url">LLM 端点 (OpenAI 兼容 /v1/chat/completions)</label><input id="c-llm-url" placeholder="http://127.0.0.1:11434/v1/chat/completions 或 https://api.deepseek.com/v1/chat/completions" /></div>
-      <div><label data-i18n="lbl-llm-model">LLM 模型名</label><input id="c-llm-model" placeholder="minicpm5-1b 或云端模型 id" /></div>
-    </div>
-    <div><label data-i18n="el-47">API Key（云端才填，本地留空）</label><input id="c-llm-key" type="password" placeholder="云端 chat 的 Bearer Token；本地 Ollama 留空" /></div>
-    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('llm')" data-i18n="btn-test-llm">测试捕获 LLM</button><span id="t-llm" class="test-msg"></span></div>
-    <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:12px 0 4px">
-      <input type="checkbox" id="c-watch" style="width:auto" /> <span data-i18n="cfg-watch">启用文件/目录监听（tail 新增内容自动捕获）</span>
-    </label>
-    <div><label data-i18n="el-58">监听路径（文件或目录，.log/.txt/.md/.jsonl）</label><input id="c-watch-path" placeholder="/var/log/app.log 或 /data/transcripts" /></div>
-    <div class="row">
-      <div style="max-width:220px"><label data-i18n="el-59">启发式单条最小字符数</label><input id="c-min-chars" type="number" step="1" min="1" value="20" /></div>
-      <div style="max-width:220px"><label data-i18n="el-60">单次最多入库条数</label><input id="c-max-per" type="number" step="1" min="1" value="20" /></div>
-    </div>
-    <div><label data-i18n="el-61">关键词/正则白名单（留空=全部捕获）</label><input id="c-kw" placeholder="例如：决定|记住|偏好|规范" /></div>
-    <div style="border:1px solid var(--accent-border);border-radius:8px;padding:10px;margin:10px 0;background:var(--accent-bg)">
-      <div style="font-weight:600;color:var(--accent);margin-bottom:6px" data-i18n="el-62">事实抽取管线 (v1.4.0)</div>
-      <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
-        <input type="checkbox" id="c-reconcile" style="width:auto" /> <span data-i18n="cfg-reconcile">启用冲突检测与合并（相似记忆让 LLM 判 相同/矛盾/补充，避免重复堆砌）</span>
-      </label>
-      <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
-        <input type="checkbox" id="c-auto-filter" style="width:auto" /> <span data-i18n="cfg-auto-filter">捕获前触发判定（先让 LLM 判断是否值得记，省 token）</span>
-      </label>
-      <div class="row">
-        <div style="max-width:360px"><label data-i18n="el-63">事实类型本体 (JSON 数组)</label><input id="c-fact-types" placeholder='["preference","decision","convention","project_fact","anti_pattern","person","tooling","temporal"]' /></div>
-        <div style="max-width:200px"><label data-i18n="el-64">最低置信度 (0-1)</label><input id="c-fact-conf" type="number" step="0.05" min="0" max="1" value="0.5" /></div>
-      </div>
-    </div>
-    <div style="border:1px solid var(--accent-border);border-radius:8px;padding:10px;margin:10px 0;background:var(--accent-bg)">
-      <div style="font-weight:600;color:var(--accent);margin-bottom:6px" data-i18n="el-65">记忆分层与治理 (v1.5.0)</div>
-      <div class="row">
-        <div style="max-width:220px"><label data-i18n="el-66">实体链接加权 (0-1)</label><input id="c-entity-boost" type="number" step="0.05" min="0" max="1" value="0.15" /></div>
-        <div style="max-width:220px"><label data-i18n="el-67">Session 过期小时 (0=关)</label><input id="c-session-ttl" type="number" step="1" min="0" value="0" /></div>
-      </div>
-      <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
-        <input type="checkbox" id="c-source-trust" style="width:auto" /> <span data-i18n="cfg-source-trust">来源信任加权（human&gt;agent&gt;tool&gt;system，检索时排序）</span>
-      </label>
-      <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
-        <input type="checkbox" id="c-preserve-conflict" style="width:auto" /> <span data-i18n="cfg-preserve-conflict">时序 ADD-only（冲突事实不覆盖旧值，新建并保留演变轨迹）</span>
-      </label>
-      <div style="max-width:420px"><label data-i18n="el-68">来源信任权重 (JSON)</label><input id="c-source-weights" placeholder='{"human":1.0,"agent":0.85,"tool":0.7,"system":0.6}' /></div>
-    </div>
-    <h3 data-i18n="el-69">知识图谱</h3>
-    <p class="muted" style="margin:4px 0" data-i18n="el-70">写入/编辑记忆时用 LLM 抽取实体与关系，存入 entities/relations，可在「知识图谱」页浏览。无 LLM 时不抽取。抽取质量取决于模型，minicpm5-1b 对嵌套图 schema 不稳定，建议 kg_model 用更强模型。</p>
-    <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:8px 0 4px">
-      <input type="checkbox" id="c-kg" style="width:auto" /> <span data-i18n="cfg-kg">启用知识图谱（抽取实体与关系）</span>
-    </label>
-    <p class="muted" style="margin:8px 0 4px" data-i18n="el-71">图谱抽取可独立指向云端：填 kg_url + kg_api_key 即走云；留空则复用上面「自动捕获」的 LLM 端点（捕获与图谱可各自本地/云端）。</p>
-    <div class="row">
-      <div><label data-i18n="el-72">图谱抽取模型 (kg_model，留空=同 LLM 模型)</label><input id="c-kg-model" placeholder="minicpm5-1b（建议更强模型如 qwen3.5:9b 或云端 deepseek）" /></div>
-      <div style="max-width:220px"><label data-i18n="el-73">单条最大实体数</label><input id="c-kg-max" type="number" step="1" min="1" value="30" /></div>
-    </div>
-    <div class="row">
-      <div><label data-i18n="el-74">图谱端点 kg_url（留空=复用捕获 LLM 端点）</label><input id="c-kg-url" placeholder="https://api.deepseek.com/v1/chat/completions（可选，独立云端）" /></div>
-      <div><label data-i18n="el-75">图谱 API Key（留空=复用 LLM Key）</label><input id="c-kg-key" type="password" placeholder="可选；云端才填" /></div>
-    </div>
-    <div style="margin-top:8px"><button class="ghost" onclick="testBackend('kg')" data-i18n="btn-test-kg">测试图谱抽取</button><span id="t-kg" class="test-msg"></span></div>
-    <div><label data-i18n="el-76">实体同义词归一表 (JSON，alias→canonical，留空无)</label><textarea id="c-kg-syn" placeholder='{"李工":"小李","Aurora 项目":"Aurora"}'></textarea></div>
+  <!-- 顶部固定操作栏 -->
+  <div class="card" style="margin-bottom:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
     <button onclick="saveConfig()" data-i18n="btn-save">保存并重启服务</button>
     <button class="ghost" onclick="diagnose()" data-i18n="btn-diagnose">测试连接</button>
-    <div id="cfg-msg" class="msg"></div>
-    <p class="muted" style="margin-top:14px">保存后服务会自动重启（约十几秒），页面将自动重连。Embedding 接口需兼容 Ollama 的 <code>/api/embed</code> 格式（POST {model,input} → {embeddings}）或 OpenAI <code>/v1/embeddings</code>。</p>
+    <div id="cfg-msg" class="msg" style="flex:1;margin:0;min-width:200px"></div>
+  </div>
+  <!-- 子标签栏 -->
+  <div class="cfg-tabs">
+    <div class="cfg-tab active" onclick="switchCfgTab(0)" data-i18n="cfg-tab-storage">💾 存储与向量</div>
+    <div class="cfg-tab" onclick="switchCfgTab(1)" data-i18n="cfg-tab-capture">📥 自动捕获</div>
+    <div class="cfg-tab" onclick="switchCfgTab(2)" data-i18n="cfg-tab-quality">🎯 记忆质量</div>
+    <div class="cfg-tab" onclick="switchCfgTab(3)" data-i18n="cfg-tab-graph">🔗 知识图谱</div>
+    <div class="cfg-tab" onclick="switchCfgTab(4)" data-i18n="cfg-tab-advanced">⚙️ 高级与安全</div>
   </div>
 
-  <div class="card" style="margin-top:18px">
-    <h3 style="margin-top:0" data-i18n="sect-advanced">高级配置（v1.14.0+）</h3>
-    <p class="muted" style="margin:4px 0" data-i18n="el-77">MMR 多样性、Webhook 推送、Reranker 精排、API 鉴权密钥等。</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div><input type="checkbox" id="c-mmr" style="width:auto" /> <span data-i18n="cfg-mmr">多样性重排 (MMR)</span></div>
-      <div style="max-width:150px"><label data-i18n="el-78">MMR λ (0=纯语义 1=纯多样)</label><input id="c-mmr-lambda" type="number" step="0.05" min="0" max="1" value="0.3" /></div>
-      <div><input type="checkbox" id="c-salience" style="width:auto" /> <span data-i18n="cfg-salience">强化评分 (salience)</span></div>
-      <div><input type="checkbox" id="c-related-proj" style="width:auto" /> <span data-i18n="cfg-related-proj">跨项目记忆关联</span></div>
-      <div><input type="checkbox" id="c-auto-compress" style="width:auto" /> <span data-i18n="cfg-auto-compress">自动压缩 (consolidate)</span></div>
-      <div><input type="checkbox" id="c-correct-auto" style="width:auto" /> <span data-i18n="cfg-correct-auto">自动纠正检测</span></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
-      <div><label data-i18n="el-79">Reranker 端点</label><input id="c-reranker-url" placeholder="留空=不用 reranker" /></div>
-      <div><label data-i18n="el-80">Reranker 模型</label><input id="c-reranker-model" placeholder="cross-encoder 模型名" /></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px">
-      <div><label data-i18n="el-81">备份路径</label><input id="c-backup-path" placeholder="./backups" /></div>
-      <div style="max-width:150px"><label data-i18n="el-82">工作记忆有效小时</label><input id="c-working-ttl" type="number" step="1" min="0" value="24" /></div>
-    </div>
-    <div style="margin-top:8px">
-      <div><label data-i18n="el-83">Webhook 推送 URL (逗号分隔多个)</label><input id="c-webhook-urls" placeholder="https://hooks.example.com/webhook" /></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px">
-        <div><input type="checkbox" id="c-webhook" style="width:auto" /> <span data-i18n="cfg-webhook">启用 Webhook 推送</span></div>
-        <div style="max-width:150px"><label data-i18n="el-84">超时 (ms)</label><input id="c-webhook-timeout" type="number" step="100" min="1000" value="5000" /></div>
+  <!-- Pane 0: 存储与向量 -->
+  <div class="cfg-pane active">
+    <div class="card">
+      <div class="cfg-section">
+        <div class="cfg-section-title" data-i18n="el-40">向量数据库 (Qdrant)</div>
+        <p class="cfg-section-desc" data-i18n="el-41">Qdrant 无需用户名 / 密码（内网部署默认无鉴权；若日后启用 API Key 再补字段）。</p>
+        <div class="cfg-grid">
+          <div><label data-i18n="lbl-qdrant-url">Qdrant 地址</label><input id="c-qdrant-url" placeholder="http://192.168.110.248:6333" /></div>
+          <div><label data-i18n="el-42">集合名 (collection)</label><input id="c-qdrant-coll" placeholder="memories" /></div>
+        </div>
+        <div style="margin-top:8px"><button class="ghost" onclick="testBackend('db')" data-i18n="btn-test-db">测试 Qdrant 连接</button><span id="t-db" class="test-msg"></span></div>
       </div>
-      <div style="margin-top:6px"><label data-i18n="el-85">Webhook 签名密钥</label><input id="c-webhook-secret" type="password" placeholder="留空=不签名" /></div>
-      <div style="margin-top:6px"><label data-i18n="el-86">API 鉴权密钥 (JSON 数组，如 ["key1","key2"])</label><input id="c-api-keys" placeholder='[] = 不启用鉴权' /></div>
+      <div class="cfg-section">
+        <div class="cfg-section-title" data-i18n="el-43">模型 API (嵌入/向量)</div>
+        <p class="cfg-section-desc" data-i18n="el-44">嵌入支持本地（Ollama/llama-embed，API Key 留空）或云端（OpenAI 兼容 /v1/embeddings，填对应 Key）。</p>
+        <div class="cfg-grid">
+          <div><label data-i18n="el-45">Embedding 接口 URL</label><input id="c-emb-url" placeholder="http://127.0.0.1:11434/api/embed 或 https://api.openai.com/v1/embeddings" /></div>
+          <div><label data-i18n="el-46">模型名</label><input id="c-emb-model" placeholder="nomic-embed-text 或 text-embedding-3-small" /></div>
+        </div>
+        <label data-i18n="el-57">API Key（云端才填，本地留空）</label><input id="c-emb-key" type="password" placeholder="云端 Embedding 的 Bearer Token；本地 Ollama 留空" />
+        <div style="margin-top:8px"><button class="ghost" onclick="testBackend('embedding')" data-i18n="btn-test-emb">测试嵌入模型</button><span id="t-embedding" class="test-msg"></span></div>
+      </div>
+      <p class="muted" style="margin-top:8px">Embedding 接口需兼容 Ollama 的 <code>/api/embed</code> 格式（POST {model,input} → {embeddings}）或 OpenAI <code>/v1/embeddings</code>。保存后服务自动重启（约十几秒），页面将自动重连。</p>
     </div>
-    <div style="margin-top:8px">
-      <span class="muted" style="font-size:12px" data-i18n="lbl-lifecycle">生命周期策略：</span>
-      <select id="c-lifecycle" style="margin-left:6px">
-        <option value="none" data-i18n="opt-life-none">不过期</option><option value="ttl" data-i18n="opt-life-ttl">按过期时间</option><option value="adaptive" data-i18n="opt-life-adap">自适应</option>
-      </select>
-      <span class="muted" style="font-size:12px;margin-left:16px" data-i18n="lbl-factver">事实抽取版本：</span>
-      <select id="c-extract-ver" style="margin-left:6px">
-        <option value="v2" data-i18n="opt-fact-v2">v2（当前）</option><option value="v1" data-i18n="opt-fact-v1">v1（兼容旧流程）</option>
-      </select>
+  </div>
+
+  <!-- Pane 1: 自动捕获 -->
+  <div class="cfg-pane">
+    <div class="card">
+      <div class="cfg-section">
+        <div class="cfg-section-title" data-i18n="el-54">自动捕获</div>
+        <p class="cfg-section-desc" data-i18n="el-55">把原始对话/文本自动提炼成记忆。配 LLM 走智能提取，否则启发式按句切分去重入库。所有捕获项打 auto-captured 标签。</p>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:8px 0 4px">
+          <input type="checkbox" id="c-llm" style="width:auto" /> <span data-i18n="cfg-llm">启用 LLM 智能提取（需填写下方 chat 端点）</span>
+        </label>
+        <p class="cfg-section-desc" data-i18n="el-56">捕获 LLM 支持本地（Ollama，Key 留空）或云端（DeepSeek/OpenAI/硅基流动，填端点 + Key）。</p>
+        <div class="cfg-grid">
+          <div><label data-i18n="lbl-llm-url">LLM 端点 (OpenAI 兼容 /v1/chat/completions)</label><input id="c-llm-url" placeholder="http://127.0.0.1:11434/v1/chat/completions 或 https://api.deepseek.com/v1/chat/completions" /></div>
+          <div><label data-i18n="lbl-llm-model">LLM 模型名</label><input id="c-llm-model" placeholder="minicpm5-1b 或云端模型 id" /></div>
+        </div>
+        <label data-i18n="el-47">API Key（云端才填，本地留空）</label><input id="c-llm-key" type="password" placeholder="云端 chat 的 Bearer Token；本地 Ollama 留空" />
+        <div style="margin-top:8px"><button class="ghost" onclick="testBackend('llm')" data-i18n="btn-test-llm">测试捕获 LLM</button><span id="t-llm" class="test-msg"></span></div>
+      </div>
+      <div class="cfg-section">
+        <div class="cfg-section-title" data-i18n="el-58">文件监听</div>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:8px 0 4px">
+          <input type="checkbox" id="c-watch" style="width:auto" /> <span data-i18n="cfg-watch">启用文件/目录监听（tail 新增内容自动捕获）</span>
+        </label>
+        <label data-i18n="el-58b">监听路径（文件或目录，.log/.txt/.md/.jsonl）</label><input id="c-watch-path" placeholder="/var/log/app.log 或 /data/transcripts" />
+        <div class="cfg-grid" style="margin-top:6px">
+          <div><label data-i18n="el-59">启发式单条最小字符数</label><input id="c-min-chars" type="number" step="1" min="1" value="20" /></div>
+          <div><label data-i18n="el-60">单次最多入库条数</label><input id="c-max-per" type="number" step="1" min="1" value="20" /></div>
+        </div>
+        <label data-i18n="el-61">关键词/正则白名单（留空=全部捕获）</label><input id="c-kw" placeholder="例如：决定|记住|偏好|规范" />
+      </div>
     </div>
-  </div>  <div class="card" style="margin-top:18px">
-    <h3 style="margin-top:0" data-i18n="sect-capture-test">自动捕获测试</h3>
-    <p class="muted" style="margin:4px 0" data-i18n="el-87">粘贴一段对话/文本，调用 POST /api/capture 即时提炼成记忆（不依赖配置开关也能试）。</p>
-    <div class="row">
-      <div><label data-i18n="el-136">用户</label><input id="cap-user" placeholder="auto" /></div>
-      <div><label data-i18n="el-125">项目</label><input id="cap-project" placeholder="capture_test" /></div>
-      <div><label data-i18n="el-90">附加标签 (逗号分隔)</label><input id="cap-tags" placeholder="demo" /></div>
+    <div class="card" style="margin-top:14px">
+      <h3 style="margin-top:0" data-i18n="sect-capture-test">自动捕获测试</h3>
+      <p class="muted" style="margin:4px 0" data-i18n="el-87">粘贴一段对话/文本，调用 POST /api/capture 即时提炼成记忆（不依赖配置开关也能试）。</p>
+      <div class="row">
+        <div><label data-i18n="el-136">用户</label><input id="cap-user" placeholder="auto" /></div>
+        <div><label data-i18n="el-125">项目</label><input id="cap-project" placeholder="capture_test" /></div>
+        <div><label data-i18n="el-90">附加标签 (逗号分隔)</label><input id="cap-tags" placeholder="demo" /></div>
+      </div>
+      <label data-i18n="el-91">待捕获文本</label><textarea id="cap-text" placeholder="把要提炼的对话或笔记粘到这里，每行一句最佳。"></textarea>
+      <button onclick="runCapture()" data-i18n="el-92">捕获</button>
+      <div id="cap-msg" class="msg"></div>
+      <div id="cap-result" class="muted" style="margin-top:8px;white-space:pre-wrap"></div>
     </div>
-    <label data-i18n="el-91">待捕获文本</label><textarea id="cap-text" placeholder="把要提炼的对话或笔记粘到这里，每行一句最佳。"></textarea>
-    <button onclick="runCapture()" data-i18n="el-92">捕获</button>
-    <div id="cap-msg" class="msg"></div>
-    <div id="cap-result" class="muted" style="margin-top:8px;white-space:pre-wrap"></div>
+  </div>
+
+  <!-- Pane 2: 记忆质量 -->
+  <div class="cfg-pane">
+    <div class="card">
+      <div class="cfg-section">
+        <div class="cfg-section-title" data-i18n="el-48">记忆去重 / 合并</div>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:8px 0 4px">
+          <input type="checkbox" id="c-dedup" style="width:auto" /> <span data-i18n="cfg-dedup">启用记忆合并（相似内容自动合并，避免重复）</span>
+        </label>
+        <div class="cfg-grid"><div style="max-width:200px"><label data-i18n="el-49">合并相似度阈值 (0.7~1.0)</label><input id="c-dedup-th" type="number" step="0.01" min="0.7" max="1.0" value="0.92" /></div></div>
+      </div>
+      <div class="cfg-section">
+        <div class="cfg-section-title" data-i18n="el-50">时序感知</div>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:8px 0 4px">
+          <input type="checkbox" id="c-recency" style="width:auto" /> <span data-i18n="cfg-recency">启用检索时效加权（越近的记忆得分越高）</span>
+        </label>
+        <div class="cfg-grid">
+          <div style="max-width:200px"><label data-i18n="el-51">时效半衰期 (天)</label><input id="c-recency-hl" type="number" step="1" min="1" value="30" /></div>
+          <div style="max-width:200px"><label data-i18n="el-52">记忆过期天数 (0=不过期)</label><input id="c-expiry" type="number" step="1" min="0" value="0" /></div>
+        </div>
+      </div>
+      <div class="cfg-section">
+        <div class="cfg-section-title" data-i18n="el-62">事实抽取管线 (v1.4.0)</div>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
+          <input type="checkbox" id="c-reconcile" style="width:auto" /> <span data-i18n="cfg-reconcile">启用冲突检测与合并（相似记忆让 LLM 判 相同/矛盾/补充，避免重复堆砌）</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
+          <input type="checkbox" id="c-auto-filter" style="width:auto" /> <span data-i18n="cfg-auto-filter">捕获前触发判定（先让 LLM 判断是否值得记，省 token）</span>
+        </label>
+        <div class="cfg-grid">
+          <div style="max-width:360px"><label data-i18n="el-63">事实类型本体 (JSON 数组)</label><input id="c-fact-types" placeholder='["preference","decision","convention","project_fact","anti_pattern","person","tooling","temporal"]' /></div>
+          <div style="max-width:200px"><label data-i18n="el-64">最低置信度 (0-1)</label><input id="c-fact-conf" type="number" step="0.05" min="0" max="1" value="0.5" /></div>
+        </div>
+      </div>
+      <div class="cfg-section">
+        <div class="cfg-section-title" data-i18n="el-65">记忆分层与治理 (v1.5.0)</div>
+        <div class="cfg-grid">
+          <div style="max-width:220px"><label data-i18n="el-66">实体链接加权 (0-1)</label><input id="c-entity-boost" type="number" step="0.05" min="0" max="1" value="0.15" /></div>
+          <div style="max-width:220px"><label data-i18n="el-67">Session 过期小时 (0=关)</label><input id="c-session-ttl" type="number" step="1" min="0" value="0" /></div>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
+          <input type="checkbox" id="c-source-trust" style="width:auto" /> <span data-i18n="cfg-source-trust">来源信任加权（human&gt;agent&gt;tool&gt;system，检索时排序）</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
+          <input type="checkbox" id="c-preserve-conflict" style="width:auto" /> <span data-i18n="cfg-preserve-conflict">时序 ADD-only（冲突事实不覆盖旧值，新建并保留演变轨迹）</span>
+        </label>
+        <div style="max-width:420px"><label data-i18n="el-68">来源信任权重 (JSON)</label><input id="c-source-weights" placeholder='{"human":1.0,"agent":0.85,"tool":0.7,"system":0.6}' /></div>
+      </div>
+      <div class="cfg-section" style="border-color:var(--accent-border);background:var(--accent-bg)">
+        <div class="cfg-section-title">🆕 记忆质量自动化 (v1.20.0)</div>
+        <p class="cfg-section-desc">调度器周期性扫描：检测过期事实（打 stale 标签）→ 发现矛盾创建修复任务 → 长期未访问记忆置信度衰减。</p>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
+          <input type="checkbox" id="c-quality-auto" style="width:auto" /> <span data-i18n="cfg-quality-auto">启用质量自动化（过期检测 + 矛盾修复 + 置信度衰减）</span>
+        </label>
+        <div class="cfg-grid">
+          <div style="max-width:200px"><label data-i18n="lbl-stale-days">过期事实判定天数</label><input id="c-stale-days" type="number" step="1" min="1" value="180" /></div>
+          <div style="max-width:200px"><label data-i18n="lbl-decay-days">置信度衰减天数</label><input id="c-decay-days" type="number" step="1" min="1" value="90" /></div>
+        </div>
+        <div style="max-width:200px;margin-top:6px"><label data-i18n="lbl-decay-rate">置信度衰减率</label><input id="c-decay-rate" type="number" step="0.01" min="0" max="1" value="0.05" /></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pane 3: 知识图谱 -->
+  <div class="cfg-pane">
+    <div class="card">
+      <div class="cfg-section">
+        <div class="cfg-section-title" data-i18n="el-69">知识图谱</div>
+        <p class="cfg-section-desc" data-i18n="el-70">写入/编辑记忆时用 LLM 抽取实体与关系，存入 entities/relations，可在「知识图谱」页浏览。无 LLM 时不抽取。抽取质量取决于模型，minicpm5-1b 对嵌套图 schema 不稳定，建议 kg_model 用更强模型。</p>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:8px 0 4px">
+          <input type="checkbox" id="c-kg" style="width:auto" /> <span data-i18n="cfg-kg">启用知识图谱（抽取实体与关系）</span>
+        </label>
+        <p class="cfg-section-desc" data-i18n="el-71">图谱抽取可独立指向云端：填 kg_url + kg_api_key 即走云；留空则复用「自动捕获」的 LLM 端点（捕获与图谱可各自本地/云端）。</p>
+        <div class="cfg-grid">
+          <div><label data-i18n="el-72">图谱抽取模型 (kg_model，留空=同 LLM 模型)</label><input id="c-kg-model" placeholder="minicpm5-1b（建议更强模型如 qwen3.5:9b 或云端 deepseek）" /></div>
+          <div style="max-width:220px"><label data-i18n="el-73">单条最大实体数</label><input id="c-kg-max" type="number" step="1" min="1" value="30" /></div>
+        </div>
+        <div class="cfg-grid" style="margin-top:6px">
+          <div><label data-i18n="el-74">图谱端点 kg_url（留空=复用捕获 LLM 端点）</label><input id="c-kg-url" placeholder="https://api.deepseek.com/v1/chat/completions（可选，独立云端）" /></div>
+          <div><label data-i18n="el-75">图谱 API Key（留空=复用 LLM Key）</label><input id="c-kg-key" type="password" placeholder="可选；云端才填" /></div>
+        </div>
+        <div style="margin-top:8px"><button class="ghost" onclick="testBackend('kg')" data-i18n="btn-test-kg">测试图谱抽取</button><span id="t-kg" class="test-msg"></span></div>
+        <label data-i18n="el-76">实体同义词归一表 (JSON，alias→canonical，留空无)</label><textarea id="c-kg-syn" placeholder='{"李工":"小李","Aurora 项目":"Aurora"}'></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pane 4: 高级与安全 -->
+  <div class="cfg-pane">
+    <div class="card">
+      <div class="cfg-section">
+        <div class="cfg-section-title" data-i18n="sect-adv-retrieval">检索增强</div>
+        <div class="cfg-grid">
+          <div><label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0"><input type="checkbox" id="c-mmr" style="width:auto" /> <span data-i18n="cfg-mmr">多样性重排 (MMR)</span></label></div>
+          <div style="max-width:150px"><label data-i18n="el-78">MMR λ (0=纯语义 1=纯多样)</label><input id="c-mmr-lambda" type="number" step="0.05" min="0" max="1" value="0.3" /></div>
+        </div>
+        <div class="cfg-grid" style="margin-top:4px">
+          <div><label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0"><input type="checkbox" id="c-salience" style="width:auto" /> <span data-i18n="cfg-salience">强化评分 (salience)</span></label></div>
+          <div><label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0"><input type="checkbox" id="c-related-proj" style="width:auto" /> <span data-i18n="cfg-related-proj">跨项目记忆关联</span></label></div>
+        </div>
+        <div class="cfg-grid" style="margin-top:4px">
+          <div><label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0"><input type="checkbox" id="c-auto-compress" style="width:auto" /> <span data-i18n="cfg-auto-compress">自动压缩 (consolidate)</span></label></div>
+          <div><label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0"><input type="checkbox" id="c-correct-auto" style="width:auto" /> <span data-i18n="cfg-correct-auto">自动纠正检测</span></label></div>
+        </div>
+        <div class="cfg-grid" style="margin-top:4px">
+          <div><label data-i18n="el-79">Reranker 端点</label><input id="c-reranker-url" placeholder="留空=不用 reranker" /></div>
+          <div><label data-i18n="el-80">Reranker 模型</label><input id="c-reranker-model" placeholder="cross-encoder 模型名" /></div>
+        </div>
+      </div>
+      <div class="cfg-section">
+        <div class="cfg-section-title" data-i18n="sect-adv-webhook">Webhook 推送</div>
+        <label data-i18n="el-83">Webhook 推送 URL (逗号分隔多个)</label><input id="c-webhook-urls" placeholder="https://hooks.example.com/webhook" />
+        <div class="cfg-grid" style="margin-top:6px">
+          <div><label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0"><input type="checkbox" id="c-webhook" style="width:auto" /> <span data-i18n="cfg-webhook">启用 Webhook 推送</span></label></div>
+          <div style="max-width:150px"><label data-i18n="el-84">超时 (ms)</label><input id="c-webhook-timeout" type="number" step="100" min="1000" value="5000" /></div>
+        </div>
+        <label data-i18n="el-85">Webhook 签名密钥</label><input id="c-webhook-secret" type="password" placeholder="留空=不签名" />
+      </div>
+      <div class="cfg-section">
+        <div class="cfg-section-title" data-i18n="sect-adv-storage">存储与备份</div>
+        <div class="cfg-grid">
+          <div><label data-i18n="el-81">备份路径</label><input id="c-backup-path" placeholder="./backups" /></div>
+          <div style="max-width:150px"><label data-i18n="el-82">工作记忆有效小时</label><input id="c-working-ttl" type="number" step="1" min="0" value="24" /></div>
+        </div>
+      </div>
+      <div class="cfg-section">
+        <div class="cfg-section-title" data-i18n="sect-adv-auth">鉴权与策略</div>
+        <label data-i18n="el-86">API 鉴权密钥 (JSON 数组，如 ["key1","key2"])</label><input id="c-api-keys" placeholder='[] = 不启用鉴权' />
+        <div class="cfg-grid" style="margin-top:8px">
+          <div>
+            <span class="muted" style="font-size:12px" data-i18n="lbl-lifecycle">生命周期策略：</span>
+            <select id="c-lifecycle" style="margin-left:6px;width:auto">
+              <option value="none" data-i18n="opt-life-none">不过期</option><option value="ttl" data-i18n="opt-life-ttl">按过期时间</option><option value="expire">expire（到期清理）</option><option value="adaptive" data-i18n="opt-life-adap">自适应</option>
+            </select>
+          </div>
+          <div>
+            <span class="muted" style="font-size:12px" data-i18n="lbl-factver">事实抽取版本：</span>
+            <select id="c-extract-ver" style="margin-left:6px;width:auto">
+              <option value="v2" data-i18n="opt-fact-v2">v2（当前）</option><option value="v1" data-i18n="opt-fact-v1">v1（兼容旧流程）</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="cfg-section" style="border-color:var(--accent-border);background:var(--accent-bg)">
+        <div class="cfg-section-title">🆕 SSRF 防护 (v1.20.0)</div>
+        <p class="cfg-section-desc">阻止出站请求访问内网地址（webhook、reranker 等用户可配的 URL 会做 DNS 解析后拦截私有 IP）。</p>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
+          <input type="checkbox" id="c-ssrf" style="width:auto" /> <span data-i18n="cfg-ssrf">启用 SSRF 防护（拒绝出站请求到内网 IP）</span>
+        </label>
+        <label data-i18n="lbl-ssrf-allow">SSRF 白名单（逗号分隔，如 127.0.0.1,localhost）</label><input id="c-ssrf-allowlist" placeholder="127.0.0.1,localhost" />
+      </div>
+      <div class="cfg-section" style="border-color:var(--accent-border);background:var(--accent-bg)">
+        <div class="cfg-section-title">🆕 搜索结果缓存 (v1.20.0)</div>
+        <p class="cfg-section-desc">对检索结果做 LRU 缓存，重复查询直接返回，记忆变更时自动失效。</p>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
+          <input type="checkbox" id="c-search-cache" style="width:auto" /> <span data-i18n="cfg-search-cache">启用搜索结果缓存</span>
+        </label>
+        <div class="cfg-grid">
+          <div style="max-width:200px"><label data-i18n="lbl-cache-ttl">缓存 TTL (ms)</label><input id="c-cache-ttl" type="number" step="1000" min="1000" value="60000" /></div>
+          <div style="max-width:200px"><label data-i18n="lbl-cache-max">最大缓存条数</label><input id="c-cache-max" type="number" step="10" min="10" value="200" /></div>
+        </div>
+      </div>
+      <div class="cfg-section" style="border-color:var(--accent-border);background:var(--accent-bg)">
+        <div class="cfg-section-title">🆕 关联推荐 (v1.20.0)</div>
+        <p class="cfg-section-desc">写入记忆时自动推荐相关记忆（基于向量邻近 + 实体共现 + 标签交集）。</p>
+        <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
+          <input type="checkbox" id="c-suggest" style="width:auto" /> <span data-i18n="cfg-suggest">启用关联推荐（add_memory 返回 related_suggestions）</span>
+        </label>
+        <div style="max-width:200px"><label data-i18n="lbl-suggest-limit">推荐条数上限</label><input id="c-suggest-limit" type="number" step="1" min="1" value="5" /></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -520,6 +639,12 @@ const __lang = {
     'lbl-capture-text':'粘贴对话/文本', 'lbl-capture-user':'用户', 'lbl-capture-project':'项目', 'lbl-capture-tags':'标签',
     'lbl-qdrant-url':'Qdrant 地址', 'lbl-emb-url':'Embedding 端点', 'lbl-emb-model':'嵌入模型', 'lbl-llm-url':'LLM 端点', 'lbl-llm-model':'LLM 模型',
     'sect-advanced':'高级配置', 'sect-advanced-desc':'MMR、Webhook、Reranker、API 鉴权密钥等',
+    'cfg-tab-storage':'💾 存储与向量', 'cfg-tab-capture':'📥 自动捕获', 'cfg-tab-quality':'🎯 记忆质量', 'cfg-tab-graph':'🔗 知识图谱', 'cfg-tab-advanced':'⚙️ 高级与安全',
+    'sect-adv-retrieval':'检索增强', 'sect-adv-webhook':'Webhook 推送', 'sect-adv-storage':'存储与备份', 'sect-adv-auth':'鉴权与策略', 'el-58b':'文件监听',
+    'cfg-quality-auto':'启用质量自动化（过期检测 + 矛盾修复 + 置信度衰减）', 'lbl-stale-days':'过期事实判定天数', 'lbl-decay-days':'置信度衰减天数', 'lbl-decay-rate':'置信度衰减率',
+    'cfg-ssrf':'启用 SSRF 防护（拒绝出站请求到内网 IP）', 'lbl-ssrf-allow':'SSRF 白名单（逗号分隔，如 127.0.0.1,localhost）',
+    'cfg-search-cache':'启用搜索结果缓存', 'lbl-cache-ttl':'缓存 TTL (ms)', 'lbl-cache-max':'最大缓存条数',
+    'cfg-suggest':'启用关联推荐（add_memory 返回 related_suggestions）', 'lbl-suggest-limit':'推荐条数上限',
     'auth-login-title':'鉴权需要', 'auth-login-desc':'请输入你在 config.json 的 api_keys 中配置的密钥', 'auth-placeholder':'输入密钥', 'auth-confirm':'确认',
     'msg-err-key':'请输入密钥', 'msg-bad-key':'密钥错误，请重新输入', 'msg-conn-fail':'连接失败，请重试',
     'st-auth-logged':'已登录', 'st-auth-unlogged':'未登录', 'lang-btn':'EN',
@@ -597,6 +722,12 @@ const __lang = {
     'lbl-capture-text':'Paste text to capture', 'lbl-capture-user':'User', 'lbl-capture-project':'Project', 'lbl-capture-tags':'Tags',
     'lbl-qdrant-url':'Qdrant URL', 'lbl-emb-url':'Embedding Endpoint', 'lbl-emb-model':'Embedding Model', 'lbl-llm-url':'LLM Endpoint', 'lbl-llm-model':'LLM Model',
     'sect-advanced':'Advanced Config', 'sect-advanced-desc':'MMR, Webhook, Reranker, API Keys, etc.',
+    'cfg-tab-storage':'💾 Storage & Vector', 'cfg-tab-capture':'📥 Capture', 'cfg-tab-quality':'🎯 Quality', 'cfg-tab-graph':'🔗 Knowledge Graph', 'cfg-tab-advanced':'⚙️ Advanced & Security',
+    'sect-adv-retrieval':'Retrieval', 'sect-adv-webhook':'Webhook', 'sect-adv-storage':'Storage & Backup', 'sect-adv-auth':'Auth & Policy', 'el-58b':'File Watch',
+    'cfg-quality-auto':'Enable quality automation (stale detection + conflict repair + confidence decay)', 'lbl-stale-days':'Stale fact threshold (days)', 'lbl-decay-days':'Confidence decay days', 'lbl-decay-rate':'Confidence decay rate',
+    'cfg-ssrf':'Enable SSRF protection (block outbound requests to private IPs)', 'lbl-ssrf-allow':'SSRF allowlist (comma-separated)',
+    'cfg-search-cache':'Enable search result cache', 'lbl-cache-ttl':'Cache TTL (ms)', 'lbl-cache-max':'Max cache entries',
+    'cfg-suggest':'Enable related suggestions (add_memory returns related_suggestions)', 'lbl-suggest-limit':'Max suggestions',
     'sect-capture-test':'Auto Capture Test', 'sect-webhook':'Webhook Delivery Status',
     'auth-login-title':'Authentication Required', 'auth-login-desc':'Enter your API key configured in config.json api_keys', 'auth-placeholder':'Enter API key', 'auth-confirm':'Login',
     'msg-err-key':'Please enter a key', 'msg-bad-key':'Invalid key, please try again', 'msg-conn-fail':'Connection failed',
@@ -1121,6 +1252,11 @@ async function bulkExport() {
   showMsg('#data-msg', t('el-185', { n: items.length }), 'ok');
 }
 
+function switchCfgTab(idx) {
+  document.querySelectorAll('.cfg-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+  document.querySelectorAll('.cfg-pane').forEach((p, i) => p.classList.toggle('active', i === idx));
+}
+
 async function loadConfig() {
   const r = await fetch('/api/config'); const c = await r.json();
   $('#c-qdrant-url').value = c.qdrant_url || ''; $('#c-qdrant-coll').value = c.qdrant_collection || 'memories';
@@ -1174,6 +1310,18 @@ async function loadConfig() {
   $('#c-api-keys').value = Array.isArray(c.api_keys) && c.api_keys.length ? '******' : '';
   $('#c-lifecycle').value = c.lifecycle_policy || 'none';
   $('#c-extract-ver').value = c.extract_version || 'v2';
+  // v1.20.0 配置项
+  $('#c-ssrf').checked = (c.ssrf_protection !== false);
+  $('#c-ssrf-allowlist').value = Array.isArray(c.ssrf_allowlist) ? c.ssrf_allowlist.join(',') : (typeof c.ssrf_allowlist === 'string' ? c.ssrf_allowlist : '127.0.0.1,localhost');
+  $('#c-quality-auto').checked = (c.quality_auto_enabled !== false);
+  $('#c-stale-days').value = (c.stale_fact_days != null) ? c.stale_fact_days : 180;
+  $('#c-decay-days').value = (c.confidence_decay_days != null) ? c.confidence_decay_days : 90;
+  $('#c-decay-rate').value = (c.confidence_decay_rate != null) ? c.confidence_decay_rate : 0.05;
+  $('#c-search-cache').checked = (c.search_cache_enabled !== false);
+  $('#c-cache-ttl').value = (c.search_cache_ttl_ms != null) ? c.search_cache_ttl_ms : 60000;
+  $('#c-cache-max').value = (c.search_cache_max != null) ? c.search_cache_max : 200;
+  $('#c-suggest').checked = (c.suggest_related !== false);
+  $('#c-suggest-limit').value = (c.suggest_related_limit != null) ? c.suggest_related_limit : 5;
 }
 
 function validateConfig() {
@@ -1266,6 +1414,18 @@ async function saveConfig() {
     api_keys: (() => { const v = $('#c-api-keys').value.trim(); return v === '******' ? '******' : v ? (() => { try { return JSON.parse(v); } catch (e) { return []; } })() : []; })(),
     lifecycle_policy: $('#c-lifecycle').value,
     extract_version: $('#c-extract-ver').value,
+    // v1.20.0 配置项
+    ssrf_protection: $('#c-ssrf').checked,
+    ssrf_allowlist: $('#c-ssrf-allowlist').value.split(',').map(s => s.trim()).filter(Boolean),
+    quality_auto_enabled: $('#c-quality-auto').checked,
+    stale_fact_days: parseInt($('#c-stale-days').value) || 180,
+    confidence_decay_days: parseInt($('#c-decay-days').value) || 90,
+    confidence_decay_rate: Number($('#c-decay-rate').value) || 0.05,
+    search_cache_enabled: $('#c-search-cache').checked,
+    search_cache_ttl_ms: parseInt($('#c-cache-ttl').value) || 60000,
+    search_cache_max: parseInt($('#c-cache-max').value) || 200,
+    suggest_related: $('#c-suggest').checked,
+    suggest_related_limit: parseInt($('#c-suggest-limit').value) || 5,
   };
   showMsg('#cfg-msg', t('msg-saving'), 'info');
   const r = await fetch('/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });

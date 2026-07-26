@@ -318,7 +318,7 @@ API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js
 
 - `BASE`：被测服务地址；`API_KEY`：服务端 `config.json` 中 `api_keys` 之一（测试助手自动附带 `Authorization: Bearer` 与 `X-Requested-With: ai-memory` 头）。
 - 长捕获管线：LLM/嵌入推理期间对客户端「无数据下发」，整段空闲可达 20~40s，故依赖服务侧 socket 超时已调高（≥120s），否则客户端会报 "other side closed"。
-- 期望输出：`===== OVERALL ok=N fail=0 =====`（N 随套件增减，v1.19.0 基线 80 项全过）。任一 `fail>0` 即阻断。
+- 期望输出：`===== OVERALL ok=N fail=0 =====`（N 随套件增减，v1.20.0 基线 80 项全过）。任一 `fail>0` 即阻断。
 
 ---
 
@@ -348,6 +348,17 @@ API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js
 | `capture_max_per_call` | `20` | 单次捕获最大条数 |
 | `verify_enabled` | `true` | 虚假完成检测开关（v1.19.0） |
 | `verify_base_url` | 空 | endpoint 验证基址前缀（v1.19.0，如 `http://192.168.110.128:8765`） |
+| `ssrf_protection` | `true` | SSRF 防护开关：拦截 webhook/reranker 出站到内网 IP（v1.20.0） |
+| `ssrf_allowlist` | `["127.0.0.1","localhost"]` | SSRF 白名单 IP/域名（v1.20.0） |
+| `quality_auto_enabled` | `true` | 记忆质量自动化开关：过期检测+矛盾修复+置信度衰减（v1.20.0） |
+| `stale_fact_days` | `180` | 事实过期天数阈值（v1.20.0） |
+| `confidence_decay_days` | `90` | 置信度衰减起始天数（v1.20.0） |
+| `confidence_decay_rate` | `0.05` | 置信度衰减速率（v1.20.0） |
+| `search_cache_enabled` | `true` | 搜索结果 LRU 缓存开关（v1.20.0） |
+| `search_cache_ttl_ms` | `60000` | 搜索缓存 TTL 毫秒（v1.20.0） |
+| `search_cache_max` | `200` | 搜索缓存最大条目数（v1.20.0） |
+| `suggest_related` | `true` | 记忆关联推荐开关：add_memory 返回 related_suggestions（v1.20.0） |
+| `suggest_related_limit` | `5` | 关联推荐返回条数（v1.20.0） |
 
 > `api_key` 在 `/api/config` 返回中被掩码为 `******`；保存时仅当值不为 `******` 才更新（掩码不会覆盖真值）。
 
@@ -440,11 +451,23 @@ API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js
 
 > v1.19.0 引入 **虚假完成自动检测闭环**（`lib/verify.js`）：调度器周期性扫描"声称已完成"的记忆 → 验证证据（文件存在性 / git commit / HTTP 端点 404）→ 失败则自动创建 `fix-needed` 修复任务 → AI 轮询发现 → `resolve_fix` 标记 → 下次扫描自动重验。这是记忆系统从"被动存储"走向"主动质量保证"的关键能力——当 AI 声称完成但实际没做时，系统自动检测、派发修复任务、修复后自动重验。
 
+### v1.20.0 新增工具（记忆质量+安全+性能+关联推荐，共 3 个）
+
+| 工具 | 说明 |
+|------|------|
+| `list_conflicts` | 列出所有待修复的记忆矛盾任务（`conflict-task` 标签），供 AI 轮询发现并处理 |
+| `resolve_conflict` | AI 处理完矛盾后调用，标记为已解决（移除 `conflict-task`/`fix-needed` 标签、加 `resolved`） |
+| `run_quality_scan` | 手动触发一次记忆质量扫描（过期事实检测 + 矛盾主动修复 + 置信度衰减） |
+
+> v1.20.0 同时引入 4 大增强（无新依赖）：**② SSRF 防护**（`lib/util.js` 新增 `isPrivateIP`/`safeFetch`/`checkSSRF`，webhook 与 reranker 出站 URL 拦截内网 IP，`ssrf_allowlist` 白名单）；**③ 记忆质量自动化**（`lib/quality_auto.js` 新模块——过期事实检测 + 矛盾主动修复 + 置信度自然衰减，由 scheduler 周期性驱动）；**④ 性能优化**（批量嵌入 `embedBatch` + 搜索结果 LRU 缓存 + Qdrant payload 索引 12 字段）；**⑥ 记忆关联推荐**（`add_memory` 写入成功后返回 `related_suggestions` 字段，基于向量邻近 + 实体共现 + 标签交集综合排序）。
+
 ---
 
 ## 十一、版本
 
-- **v1.19.0**（当前版本）：虚假完成自动检测闭环。新增 `lib/verify.js` 模块——调度器周期性扫描带 `promise`/`impl-done`/`completed` 标签的记忆，逐一验证证据（`file:`→`fs.existsSync`、`commit:`→`git log --oneline`、`endpoint:`→HEAD 请求检查 404）；验证失败的记忆自动打 `fix-needed` 标签并创建修复任务（内容记录失败原因与缺失证据）；AI 轮询 `list_fix_needed` 发现待修复项 → 修复后调 `resolve_fix` 标记为 `fixed` → 下次扫描自动重验，通过则标记 `verified`。MCP 新增 3 个工具（`run_verification`/`list_fix_needed`/`resolve_fix`）。`lib/scheduler.js` `scanOnce()` 中集成 `verify.scanAndCreateFixes()` 调用。配置项新增 `verify_enabled`（默认 true）、`verify_base_url`（用于 endpoint 验证的基址前缀）。核心价值：当 AI 声称完成但实际没做时，系统自动检测、派发修复任务、修复后自动重验——记忆系统从被动存储走向主动质量保证。回归 80/80 fail=0。
+- **v1.20.0**（当前版本）：记忆质量+安全+性能+关联推荐批次（4 大增强，无新依赖）。**② SSRF 防护**：`lib/util.js` 新增 `isPrivateIP`（IPv4/IPv6 内网地址段检测）、`safeFetch`（异步版，DNS 解析后拦截）、`checkSSRF`（同步版，用于 webhook `http.request` 模式）；webhook（`lib/webhook.js`）与 reranker（`lib/memory.js` `_rerank`）出站 URL 统一检查，拒绝内网 IP；管理员配置的内部服务（embedding/llm/qdrant）不走检查。`ssrf_allowlist` 白名单（默认 `['127.0.0.1', 'localhost']`）。**③ 记忆质量自动化**：新模块 `lib/quality_auto.js`——`scanStaleFacts`（扫描 fact/preference/decision 标签记忆，LLM 判定或启发式判断是否过时，打 `stale` 标签）、`repairContradictions`（复用 `maintain.detectContradictions` 检测矛盾，发现后创建 `conflict-task` 修复任务记忆）、`decayConfidence`（长期未访问记忆 confidence 递减，`confidence -= decay_rate * (days_idle / decay_days)`）；由 `lib/scheduler.js` `scanOnce()` 周期性驱动，失败静默不影响主流程。MCP 新增 3 个工具（`list_conflicts`/`resolve_conflict`/`run_quality_scan`）。**④ 性能优化**：(a) 批量嵌入——`lib/embed.js` 新增 `embedBatch(texts)`，先查缓存再批量请求远端，`lib/memory_lifecycle.js` `batchAdd` 改为先批量嵌入再逐条写入（通过 `_embedding` 属性传入 `doAdd`）；(b) 搜索结果 LRU 缓存——`lib/memory.js` `_searchCache` Map，TTL 60s，`bus.on('memory-changed')` 触发全量失效；(c) Qdrant payload 索引——`lib/qdrant.js` `ensureIndexes()` 为 12 个高频过滤字段（user/project/session/tags/type/memory_type/mem_category/content_hash/pinned/expires_at/updated_at/next_review_at）建 keyword/datetime/bool 索引，启动时幂等调用。**⑥ 记忆关联推荐**：`lib/memory.js` `doAdd` 写入成功后，如果 `suggest_related !== false` 且有有效嵌入，调用 `_suggestRelated` 基于向量邻近（Qdrant query 或 SQLite cosine）+ 实体共现 + 标签交集综合排序，返回 `related_suggestions: [{id, content, score, reason}]`。配置项新增 11 个：`ssrf_protection`/`ssrf_allowlist`/`quality_auto_enabled`/`stale_fact_days`/`confidence_decay_days`/`confidence_decay_rate`/`search_cache_enabled`/`search_cache_ttl_ms`/`search_cache_max`/`suggest_related`/`suggest_related_limit`。
+
+- **v1.19.0**：虚假完成自动检测闭环。新增 `lib/verify.js` 模块——调度器周期性扫描带 `promise`/`impl-done`/`completed` 标签的记忆，逐一验证证据（`file:`→`fs.existsSync`、`commit:`→`git log --oneline`、`endpoint:`→HEAD 请求检查 404）；验证失败的记忆自动打 `fix-needed` 标签并创建修复任务（内容记录失败原因与缺失证据）；AI 轮询 `list_fix_needed` 发现待修复项 → 修复后调 `resolve_fix` 标记为 `fixed` → 下次扫描自动重验，通过则标记 `verified`。MCP 新增 3 个工具（`run_verification`/`list_fix_needed`/`resolve_fix`）。`lib/scheduler.js` `scanOnce()` 中集成 `verify.scanAndCreateFixes()` 调用。配置项新增 `verify_enabled`（默认 true）、`verify_base_url`（用于 endpoint 验证的基址前缀）。核心价值：当 AI 声称完成但实际没做时，系统自动检测、派发修复任务、修复后自动重验——记忆系统从被动存储走向主动质量保证。回归 80/80 fail=0。
 
 - **v1.18.0**：系统增强批次（6 项）。**④ 并发队列**：`lib/queue.js` 泛化 `RequestQueue`（FIFO + 可配置信号量），embed/LLM 两独立实例，单 GPU 串行、多 GPU 并行，由 `embedding_max_concurrent`/`llm_max_concurrent`/`queue_max_size` 控制。**⑤ 分析面板**：admin.html 新增「分析面板」tab（Chart.js：记忆量趋势线图 + 标签分布甜甜圈图 + 健康度百分比）。**⑥ 文档站点**：`docs/` 目录（配置指南 + MCP 工具参考 + WorkBuddy 集成指南）。**⑦ MCP 全特性**：声明 `logging` 能力（SDK 自动处理 `SetLevel` + `sendLoggingMessage`）。**⑧ 备份工具**：`lib/backup.js`（`createBackup`/`listBackups`/`restoreBackup`），注册 3 个 MCP 工具。**② WorkBuddy Workflow**：`docs/workflow-integration.md` 开箱用例。回归 80/80 fail=0。
 

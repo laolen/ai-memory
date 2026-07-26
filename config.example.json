@@ -66,5 +66,18 @@
   "reranker_api_key": "",
   "api_keys": [],
   "auto_compress": false,
-  "backup_path": "./backups"
+  "backup_path": "./backups",
+  "verify_enabled": true,
+  "verify_base_url": "",
+  "ssrf_protection": true,
+  "ssrf_allowlist": ["127.0.0.1", "localhost"],
+  "quality_auto_enabled": true,
+  "stale_fact_days": 180,
+  "confidence_decay_days": 90,
+  "confidence_decay_rate": 0.05,
+  "search_cache_enabled": true,
+  "search_cache_ttl_ms": 60000,
+  "search_cache_max": 200,
+  "suggest_related": true,
+  "suggest_related_limit": 5
 }

@@ -24,3 +24,8 @@ backups/
 
 # 部署报告含服务器凭据，禁止推送
 DEPLOY_REPORT_*.md
+
+# 覆盖率产物（c8 生成，CI 上传 lcov artifact，不入库）
+coverage/
+.c8/
+.nyc_output/

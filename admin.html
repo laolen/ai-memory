@@ -126,7 +126,8 @@
   <div class="tab" data-pane="graph" data-i18n="tab-graph">知识图谱</div>
   <div class="tab" data-pane="dashboard" data-i18n="tab-dashboard">分析面板</div>
   <div class="tab" data-pane="links" data-i18n="tab-links">项目关系</div>
-  <div class="tab" data-pane="quality" data-i18n="tab-quality">质量监控</div>
+    <div class="tab" data-pane="quality" data-i18n="tab-quality">质量监控</div>
+    <div class="tab" data-pane="audit" data-i18n="tab-audit">操作审计</div>
 </div>
 
 <!-- 数据管理 -->
@@ -420,6 +421,14 @@
         </div>
       </div>
       <div class="cfg-section" style="border-color:var(--accent-border);background:var(--accent-bg)">
+        <div class="cfg-section-title">🆕 全局请求限流 (v1.22.0)</div>
+        <p class="cfg-section-desc">按客户端 IP 的固定窗口限流，防御失控客户端/智能体洪水冲垮服务（内部 LAN 服务，非安全边界）。健康/指标/文档类端点自动豁免。设为 0 或留空即关闭。</p>
+        <div class="cfg-grid">
+          <div style="max-width:220px"><label>每窗口最大请求数 (0=关闭)</label><input id="c-rate-max" type="number" step="10" min="0" value="300" /></div>
+          <div style="max-width:220px"><label>窗口长度 (毫秒)</label><input id="c-rate-window" type="number" step="1000" min="1000" value="60000" /></div>
+        </div>
+      </div>
+      <div class="cfg-section" style="border-color:var(--accent-border);background:var(--accent-bg)">
         <div class="cfg-section-title">🆕 SSRF 防护 (v1.20.0)</div>
         <p class="cfg-section-desc">阻止出站请求访问内网地址（webhook、reranker 等用户可配的 URL 会做 DNS 解析后拦截私有 IP）。</p>
         <label style="display:flex;align-items:center;gap:8px;color:var(--text);font-size:13px;margin:6px 0">
@@ -636,6 +645,35 @@
       <button class="ghost" onclick="closeCorrect()" data-i18n="el-139">取消</button>
       <button class="warnbtn" onclick="submitCorrect()" data-i18n="el-140">应用纠正</button>
     </div>
+  </div>
+</div>
+
+<!-- 操作审计 (v1.22.0) -->
+<div class="pane" id="pane-audit">
+  <div class="card">
+    <h3 style="margin-top:0" data-i18n="audit-title">操作审计日志</h3>
+    <p class="muted" style="margin:4px 0" data-i18n="audit-desc">记录所有记忆的增删改与固定操作（谁、何时、做了什么），用于追溯误删 / 恶意操作。关闭需配置 audit_enabled=false。</p>
+    <div class="toolbar">
+      <div style="flex:0 0 140px"><label data-i18n="audit-op">操作类型</label>
+        <select id="audit-op">
+          <option value="" data-i18n="opt-all">全部</option>
+          <option value="ADD">ADD 新增</option>
+          <option value="UPDATE">UPDATE 更新</option>
+          <option value="DELETE">DELETE 删除</option>
+          <option value="PIN">PIN 固定</option>
+          <option value="UNPIN">UNPIN 取消固定</option>
+          <option value="CORRECT">CORRECT 纠正</option>
+        </select></div>
+      <div style="flex:0 0 150px"><label data-i18n="audit-project">项目</label><input id="audit-project" placeholder="留空=全部" /></div>
+      <div style="flex:0 0 110px"><label data-i18n="audit-limit">数量</label><input id="audit-limit" type="number" value="50" /></div>
+      <div style="flex:0 0 auto"><button onclick="loadAudit()" data-i18n="audit-refresh">刷新</button></div>
+    </div>
+    <div id="audit-msg"></div>
+    <table id="audit-tbl">
+      <thead><tr><th data-i18n="audit-col-op">操作</th><th data-i18n="audit-col-ts">时间</th><th data-i18n="audit-col-memory">记忆ID</th><th data-i18n="audit-col-user">用户</th><th data-i18n="audit-col-project">项目</th><th data-i18n="audit-col-trigger">来源</th><th data-i18n="audit-col-detail">变更摘要</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div id="audit-pager" style="margin-top:10px;display:flex;gap:8px;align-items:center"></div>
   </div>
 </div>
 
@@ -1359,6 +1397,8 @@ async function loadConfig() {
   $('#c-sal-w-acc').value = (c.salience_w_acc != null) ? c.salience_w_acc : 0.5;
   $('#c-sal-access-k').value = (c.salience_access_k != null) ? c.salience_access_k : 10;
   $('#c-sal-score-w').value = (c.salience_score_w != null) ? c.salience_score_w : 0.7;
+  $('#c-rate-max').value = (c.rate_limit_max != null) ? c.rate_limit_max : 300;
+  $('#c-rate-window').value = (c.rate_limit_window_ms != null) ? c.rate_limit_window_ms : 60000;
 }
 
 function validateConfig() {
@@ -1468,6 +1508,9 @@ async function saveConfig() {
     salience_w_acc: Number($('#c-sal-w-acc').value) || 0.5,
     salience_access_k: Number($('#c-sal-access-k').value) || 10,
     salience_score_w: Number($('#c-sal-score-w').value) || 0.7,
+    // v1.22.0 (P1-3): 全局限流
+    rate_limit_max: parseInt($('#c-rate-max').value) || 0,
+    rate_limit_window_ms: parseInt($('#c-rate-window').value) || 60000,
   };
   showMsg('#cfg-msg', t('msg-saving'), 'info');
   const r = await fetch('/api/config', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
@@ -2154,6 +2197,46 @@ async function loadOps() {
 
 // 初始
 runSearch();
+
+// ---- v1.22.0: 操作审计 ----
+let _auditLoaded = false;
+async function loadAudit() {
+  const msg = $('#audit-msg'); msg.textContent = '加载中…';
+  try {
+    const op = $('#audit-op').value || '';
+    const project = $('#audit-project').value.trim() || '';
+    const limit = $('#audit-limit').value || 50;
+    const params = new URLSearchParams();
+    if (op) params.set('op', op);
+    if (project) params.set('project', project);
+    params.set('limit', limit);
+    const r = await fetch('/api/audit?' + params.toString());
+    const j = await r.json();
+    const rows = j.rows || [];
+    const esc = s => (s == null ? '' : String(s)).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+    if (!rows.length) { $('#audit-tbl tbody').innerHTML = ''; msg.textContent = '暂无审计记录'; $('#audit-pager').innerHTML = ''; return; }
+    let html = '';
+    for (const x of rows) {
+      let detail = '';
+      if (x.op === 'DELETE' && x.before) detail = '删除: ' + esc((x.before.content || '').slice(0, 60));
+      else if (x.before && x.after) {
+        const b = x.before.content || '', a = x.after.content || '';
+        if (b !== a) detail = '内容变更: ' + esc(b.slice(0, 30)) + ' → ' + esc(a.slice(0, 30));
+        else detail = '字段更新: ' + Object.keys(x.after).filter(k => k !== 'content').slice(0, 3).join(',');
+      } else if (x.op === 'PIN') detail = '固定记忆';
+      else if (x.op === 'UNPIN') detail = '取消固定';
+      else if (x.after && x.after.content) detail = esc(x.after.content.slice(0, 60));
+      html += '<tr><td>' + esc(x.op) + '</td><td>' + esc((x.ts || '').replace('T', ' ').slice(0, 19)) + '</td><td title="' + esc(x.memory_id) + '">' + esc((x.memory_id || '').slice(0, 8)) + '</td><td>' + esc(x.user || '-') + '</td><td>' + esc(x.project || '-') + '</td><td>' + esc(x.trigger || '-') + '</td><td>' + detail + '</td></tr>';
+    }
+    $('#audit-tbl tbody').innerHTML = html;
+    msg.textContent = '共 ' + (j.total || rows.length) + ' 条记录';
+    $('#audit-pager').innerHTML = '';
+  } catch (e) { msg.textContent = '❌ ' + e.message; }
+}
+document.addEventListener('click', (e) => {
+  const tab = e.target.closest && e.target.closest('.tab[data-pane="audit"]');
+  if (tab && !_auditLoaded) { _auditLoaded = true; loadAudit(); }
+});
 </script>
 </body>
 </html>

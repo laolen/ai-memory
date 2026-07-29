@@ -186,8 +186,8 @@ ssh root@192.168.110.128 'systemctl stop ai-memory && rm -rf /opt/ai-memory && t
 
 ### 审计历史层（v1.9.1）
 - **为什么**：Qdrant 是 upsert 全量覆盖（无部分更新端点），普通更新直接盖掉旧 payload，**不留变更痕迹**。为补齐「可审计、可回放」能力（对齐 Mem0 的 SQLite 历史层），新增**独立变更账本** `memory_changelog` 表（复用同一个 `memories.db`），**不被 Qdrant upsert 覆盖**。
-- **记什么**：每次写操作成功后各记一条 `{memory_id, op, ts, user, project, before, after, source_trigger}`——`op ∈ {ADD, UPDATE, CORRECT, DELETE, CLEANUP}`；`before/after` 只存关键字段快照（控制体积）。`CLEANUP`（生命周期清理）记 `{deleted_count, deleted_ids}`。
-- **怎么查**：`GET /api/memories/:id/history`（单条记忆时间线）、`GET /api/changelog?limit=`（全局时间线，倒序）。记忆删除后历史仍保留（账本独立）。
+- **记什么**：每次写操作成功后各记一条 `{memory_id, op, ts, user, project, before, after, source_trigger}`——`op ∈ {ADD, UPDATE, CORRECT, DELETE, PIN, UNPIN, CLEANUP}`；`before/after` 只存关键字段快照（控制体积）。`CLEANUP`（生命周期清理）记 `{deleted_count, deleted_ids}`。
+- **怎么查**：单条记忆时间线 `GET /api/memories/:id/history`；**全局审计流 `GET /api/audit`**（支持 `op`/`user`/`project`/`trigger` 过滤 + `limit`/`offset` 分页，返回 `{rows,total}`），记忆删除后历史仍保留（账本独立）。admin「操作审计」Tab 实时可视化（按操作类型/项目过滤、展示 before 快照摘要）。`audit_enabled=false` 可关闭写入。
 - **版本乐观锁（防并发丢失）**：每条记忆 payload 带 `version`（doAdd=1，每次更新 +1）。Qdrant 路径写前**重读最新 prev+version 再递增写回**（乐观重试，默认 3 次），避免两个并发写互相覆盖；SQLite 路径串行递增。
 
 ---
@@ -198,7 +198,7 @@ ssh root@192.168.110.128 'systemctl stop ai-memory && rm -rf /opt/ai-memory && t
 
 | # | 降级点 | 触发条件 | 降级行为 | 是否阻塞主流程 |
 |---|--------|----------|----------|----------------|
-| 1 | **数据库** | `qdrant_url` 空 / 无嵌入 / Qdrant 不可用 | 自动改用本地 SQLite `memories.db`；二者皆无则存储报错（健康检查可见） | 否（有降级库）/ 是（全无） |
+| 1 | **数据库** | `qdrant_url` 空 / 无嵌入 / Qdrant 启动期或运行期不可达 | 自动改用本地 SQLite `memories.db`；二者皆无则存储报错（健康检查可见）。**v1.22.0 新增运行期可达性探测**：`qdrant_url` 已配置但实测 `/collections/{coll}` 不可达时，状态缓存置 `false`，`memory.Q()` 据此实时降级到 SQLite —— 此前「配置了 Qdrant 但挂了」只会静态信任配置、不会真正回退 | 否（有降级库）/ 是（全无） |
 | 2 | **配置加载** | `config.json` 缺失/损坏 | `try/catch` 静默忽略，回落到内置默认值 + 环境变量 fallback | 否 |
 | 3 | **嵌入失败** | 嵌入端点不可达 / 超时 / 返回 0 维 | `catch` 后 `doc.embedding` 不赋值，记忆**仍写入**，只是该条不参与语义检索（退化为仅关键词） | 否 |
 | 4 | **去重查找失败** | `dedupFind` 异常 | 打 `console.error` + `dedup_stats.err`++，返回 `null` → 视作无相似记忆 → 直接新增，不合并（可能重复，可观测） | 否 |
@@ -319,6 +319,35 @@ API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js
 - `BASE`：被测服务地址；`API_KEY`：服务端 `config.json` 中 `api_keys` 之一（测试助手自动附带 `Authorization: Bearer` 与 `X-Requested-With: ai-memory` 头）。
 - 长捕获管线：LLM/嵌入推理期间对客户端「无数据下发」，整段空闲可达 20~40s，故依赖服务侧 socket 超时已调高（≥120s），否则客户端会报 "other side closed"。
 - 期望输出：`===== OVERALL ok=N fail=0 =====`（N 随套件增减，v1.21.0 基线 82 项全过）。任一 `fail>0` 即阻断。
+
+### CI 子集（test/ci.js）与覆盖率
+
+`test/ci.js` 是 CI 专用运行器，仅跑**纯 SQLite 降级模式**可验证的用例（不依赖外部 Qdrant/嵌入/LLM）：`unit / health / memory_ops / config / config_drift / rate_limit / fallback / backup_restore`。本地等价于：
+
+```bash
+# 本地：先以降级模式起服务，再跑子集
+QDRANT_URL='' EMBEDDING_URL='' PORT=8765 node server.js &
+BASE=http://127.0.0.1:8765 node test/ci.js
+# 覆盖率（c8 包裹，仅统计 lib/）
+npx c8 --include='lib/**/*.js' --reporter=text --reporter=lcov node test/ci.js
+```
+
+> 注意：CI 工作流 `.github/workflows/test.yml` 依赖 `test/` 目录在仓库内。若沿用「测试文件不入库」约定（`test/` 在 `.gitignore`），需改为提交 `test/`（或至少 `test/ci.js` + 所需用例）CI 才真正可执行。详见文末「测试文件入库」说明。
+
+### 多客户端配置漂移检测（scripts/config-drift.js）
+
+统一校验「运行中的服务 / 本地 config.json / 各 MCP 客户端定义」是否指向同一套后端（Qdrant / 嵌入 / LLM / KG 地址、是否启用鉴权、限流、自动备份等连接契约）：
+
+```bash
+# 比对线上服务 vs 本地模板（预期有漂移，因 example 是占位）
+node scripts/config-drift.js server:http://192.168.110.128:8765 file:config.example.json
+# 比对线上服务 vs 本地真实 config.json（预期仅版本/自动备份等细微差异）
+node scripts/config-drift.js server:http://192.168.110.128:8765 file:config.json
+# 比对线上服务 vs 某客户端 MCP 定义（mcpServers 形态）
+node scripts/config-drift.js server:http://192.168.110.128:8765 file:~/.workbuddy/mcp.json
+```
+
+发现任一项漂移即非零退出（CI 可据此阻断），输出每个漂移键在各源的取值。
 
 ---
 
@@ -465,7 +494,11 @@ API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js
 
 ## 十一、版本
 
-- **v1.21.0**（当前版本）：配置管理+运维增强批次（P0-P5，6 项改进，无新依赖）。**P0 webhook_secret 签名**：`lib/webhook.js` 终于消费 `webhook_secret` 配置（之前是空功能），出站 POST 做 HMAC-SHA256 签名，带 `X-Signature: sha256=...` header。**P1 config_fields 文档补全**：`/api/docs` 配置表从 ~46 项补全至与真实 CONFIG 对齐（补齐 `capture_min_chars`、`kg_max_entities`、`source_trust_weights`、`reconcile_enabled` 等 25+ 项），修复 `reranker_enabled` 不存在键的错误。**P2 salience 权重可配置**：`salience_w_imp/w_acc/access_k/score_w` 4 个评分常量从硬编码改为 config.json 可调（admin 高级页面 UI + loadConfig/saveConfig + POST 白名单 + `intelligence.js` 消费处同步更新）。**P3 定时备份和管理面板**：SQLite `backups` 记录表 + `GET /api/backups`/`POST /api/backups/restore`/`GET /api/backups/download/:name` 管理接口 + admin 数据页备份面板（一键备份/列表/下载/恢复）+ scheduler 定时备份（`auto_backup_interval_hours` 配置，默认 0=关）。**P4 标签管理器**：`GET /api/tags`（频率列表）+ `POST /api/tags/rename`（重命名）+ `POST /api/tags/delete`（删除），跨所有记忆同步操作。**P5 运维监控面板**：配置页新增「📊 运维」子标签——搜索缓存命中率/未命中/条数 + scheduler 最近 15 次执行历史（时间、状态、健康、到期、矛盾、自动备份）。配置项新增 9 个：`salience_w_imp`/`salience_w_acc`/`salience_access_k`/`salience_score_w`/`auto_backup_interval_hours`。回归 82/82 fail=0。
+- **v1.22.0**（当前版本）：操作审计 + Qdrant 运行时降级双批次（无新依赖）。**审计侧 ① 全局审计路由**：新增 `GET /api/audit`，支持 `op`/`user`/`project`/`trigger` 过滤 + `limit`/`offset` 分页，返回 `{rows,total}`，补齐「谁、何时、对哪条记忆做了什么」的全局可追溯视图（此前仅有单条记忆 history 与 CORRECT 查询，无全局审计流）。**② admin 操作审计 Tab**：新增「操作审计」页（按操作类型 ADD/UPDATE/DELETE/PIN/UNPIN/CORRECT + 项目过滤），展示时间、记忆 ID、用户、来源与变更摘要（DELETE 显示删除前内容、PIN/UNPIN 标记固定动作）。**③ PIN/UNPIN 专属记录**：`doUpdate` 在 patch 仅含 `pinned` 时记 `PIN`/`UNPIN` op（此前混为 `UPDATE`），语义清晰可检索。**④ audit_enabled 开关**：`lib/config.js` 新增 `audit_enabled`（默认 true），关闭后 `recordChangelog` 静默跳过，满足合规关停需求。**降级侧 ⑤ Qdrant 运行时可达性探测**：此前「`qdrant_url` 已配置但运行期挂了」只会静态信任配置、写入仍走 Qdrant 路径导致失败，降级名存实亡。`lib/qdrant.js` 新增 `isReachable()` 状态缓存（由 `health()` 更新），`lib/memory.js` 的 `Q()` 改为「配置存在 **且** 运行期可达」才走 Qdrant；`/api/health` 的 `store` 字段据实填 `qdrant`/`sqlite`、`qdrant_connected` 据实填 `true`/`false`（此前仅看配置）；`startServer()` 起每 30s 探针刷新可达性。**⑥ 全局请求限流（P1-3）**：新增零依赖内存固定窗口限流（`lib/rest.js` 全局 `onRequest` 钩子，按客户端 IP 计数），默认 `rate_limit_max=300`/分钟/`rate_limit_window_ms=60000`——宽松到不影响正常多智能体并发，但能挡住失控洪水；`0`/负即关闭。故意绕过早期 `@fastify/rate-limit` 全局化时的 ECONNRESET 回归路径（受保护路由的 `@fastify/rate-limit` 60/min 仍保留为第二层）。`/api/health`、`/metrics`、`/api/docs`、`/docs`、`/admin` 自动豁免（运维探针不被自身限流）。超限返回 `429` + `Retry-After` 头。admin「⚙️ 高级与安全」新增「🆕 全局请求限流」控件（限额/窗口），`POST /api/config` 白名单与 `/api/docs` 配置字段同步补齐。配置项新增 2 个：`rate_limit_max`、`rate_limit_window_ms`（加在 `audit_enabled` 之后，共 3 个新配置项）。**⑦ 备份恢复端到端测试（P1-4）**：新增 `test/backup_restore.js`——写入一批记忆 → `POST /api/backup` 落盘 → `DELETE /api/memories/filter` 清空 → `POST /api/backups/restore` 恢复 → 断言数据完整回来（计数复原）。自包含（SQLite 模式 + 临时 backup 目录），本地与 128 均可独立跑；补齐此前仅 `io.js` 覆盖 `/api/backup`/`/api/import`、缺「删除后恢复」闭环验证的缺口。端到端验证：`node test/run.js`（新增 `test/audit.js` 11/11、`test/fallback.js` 9/9、`test/rate_limit.js` 6/6、`test/backup_restore.js` 11/11；backup_restore 确认备份→删除→恢复计数 3→0→3）。注：`audit_enabled`/`rate_limit_*` 为生产代码改动（经 deploy.js 上 128 验证）；`backup_restore.js` 仅新增测试，验证的是 v1.21.0 既有备份/恢复接口。
+
+  **P2 批次（检索质量 + 多客户端漂移 + CI/覆盖率）**：**⑧ 检索质量评估集（P2-5）**：新增 `test/retrieval_quality.js`——定义「golden query + 期望命中记忆 + 干扰项」评估集（数据库持久性 / TCP 握手 / 前端虚拟 DOM 三个主题，各 1 目标 + 5 干扰），Qdrant 下用转述问句做混合检索、断言目标排名严格优于全部干扰项且进 top-3（相关性排序质量门），SQLite 下降级为关键词召回断言；评估记忆写入独立项目、结束全量清理，避免污染共享 Qdrant。**⑨ 多客户端配置漂移检测（P2-6）**：新增 `GET /api/config/public` 公开连接契约端点（仅含非密连接信息与「密钥是否存在」布尔标志，绝不回传任何密钥明文/掩码——专供多客户端互操作性校验），配套 `scripts/config-drift.js` CLI（对比 `server:<url>` / `file:<path>` 多源，支持 config.json 与 MCP server 定义 `mcpServers` 两种形态，输出漂移矩阵、发现漂移非零退出，CI 友好），新增 `test/config_drift.js` 守护「公开契约零密钥泄漏」红线。**⑩ CI + 覆盖率（P2-7）**：新增 `.github/workflows/test.yml`（push/PR 触发，ubuntu-latest，`npm ci` → 纯 SQLite 降级模式起服务 → `npx c8` 跑 `test/ci.js` 子集 → 上传 lcov），`test/ci.js` 仅含降级模式可跑的用例（unit/health/memory_ops/config/config_drift + 自包含 rate_limit/fallback/backup_restore），`package.json` 加 `test:ci` / `coverage` 脚本与 `c8` devDependency。端到端验证：`node test/ci.js` 子集 75/75 全过；`npx c8 ... node test/ci.js` 正常产出覆盖率报告。
+
+- **v1.21.0**：配置管理+运维增强批次（P0-P5，6 项改进，无新依赖）。**P0 webhook_secret 签名**：`lib/webhook.js` 终于消费 `webhook_secret` 配置（之前是空功能），出站 POST 做 HMAC-SHA256 签名，带 `X-Signature: sha256=...` header。**P1 config_fields 文档补全**：`/api/docs` 配置表从 ~46 项补全至与真实 CONFIG 对齐（补齐 `capture_min_chars`、`kg_max_entities`、`source_trust_weights`、`reconcile_enabled` 等 25+ 项），修复 `reranker_enabled` 不存在键的错误。**P2 salience 权重可配置**：`salience_w_imp/w_acc/access_k/score_w` 4 个评分常量从硬编码改为 config.json 可调（admin 高级页面 UI + loadConfig/saveConfig + POST 白名单 + `intelligence.js` 消费处同步更新）。**P3 定时备份和管理面板**：SQLite `backups` 记录表 + `GET /api/backups`/`POST /api/backups/restore`/`GET /api/backups/download/:name` 管理接口 + admin 数据页备份面板（一键备份/列表/下载/恢复）+ scheduler 定时备份（`auto_backup_interval_hours` 配置，默认 0=关）。**P4 标签管理器**：`GET /api/tags`（频率列表）+ `POST /api/tags/rename`（重命名）+ `POST /api/tags/delete`（删除），跨所有记忆同步操作。**P5 运维监控面板**：配置页新增「📊 运维」子标签——搜索缓存命中率/未命中/条数 + scheduler 最近 15 次执行历史（时间、状态、健康、到期、矛盾、自动备份）。配置项新增 9 个：`salience_w_imp`/`salience_w_acc`/`salience_access_k`/`salience_score_w`/`auto_backup_interval_hours`。回归 82/82 fail=0。
 
 - **v1.20.0**：记忆质量+安全+性能+关联推荐批次（4 大增强，无新依赖）。**② SSRF 防护**：`lib/util.js` 新增 `isPrivateIP`（IPv4/IPv6 内网地址段检测）、`safeFetch`（异步版，DNS 解析后拦截）、`checkSSRF`（同步版，用于 webhook `http.request` 模式）；webhook（`lib/webhook.js`）与 reranker（`lib/memory.js` `_rerank`）出站 URL 统一检查，拒绝内网 IP；管理员配置的内部服务（embedding/llm/qdrant）不走检查。`ssrf_allowlist` 白名单（默认 `['127.0.0.1', 'localhost']`）。**③ 记忆质量自动化**：新模块 `lib/quality_auto.js`——`scanStaleFacts`（扫描 fact/preference/decision 标签记忆，LLM 判定或启发式判断是否过时，打 `stale` 标签）、`repairContradictions`（复用 `maintain.detectContradictions` 检测矛盾，发现后创建 `conflict-task` 修复任务记忆）、`decayConfidence`（长期未访问记忆 confidence 递减，`confidence -= decay_rate * (days_idle / decay_days)`）；由 `lib/scheduler.js` `scanOnce()` 周期性驱动，失败静默不影响主流程。MCP 新增 3 个工具（`list_conflicts`/`resolve_conflict`/`run_quality_scan`）。**④ 性能优化**：(a) 批量嵌入——`lib/embed.js` 新增 `embedBatch(texts)`，先查缓存再批量请求远端，`lib/memory_lifecycle.js` `batchAdd` 改为先批量嵌入再逐条写入（通过 `_embedding` 属性传入 `doAdd`）；(b) 搜索结果 LRU 缓存——`lib/memory.js` `_searchCache` Map，TTL 60s，`bus.on('memory-changed')` 触发全量失效；(c) Qdrant payload 索引——`lib/qdrant.js` `ensureIndexes()` 为 12 个高频过滤字段（user/project/session/tags/type/memory_type/mem_category/content_hash/pinned/expires_at/updated_at/next_review_at）建 keyword/datetime/bool 索引，启动时幂等调用。**⑥ 记忆关联推荐**：`lib/memory.js` `doAdd` 写入成功后，如果 `suggest_related !== false` 且有有效嵌入，调用 `_suggestRelated` 基于向量邻近（Qdrant query 或 SQLite cosine）+ 实体共现 + 标签交集综合排序，返回 `related_suggestions: [{id, content, score, reason}]`。配置项新增 11 个：`ssrf_protection`/`ssrf_allowlist`/`quality_auto_enabled`/`stale_fact_days`/`confidence_decay_days`/`confidence_decay_rate`/`search_cache_enabled`/`search_cache_ttl_ms`/`search_cache_max`/`suggest_related`/`suggest_related_limit`。
 

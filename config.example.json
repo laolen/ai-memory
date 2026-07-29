@@ -4,7 +4,7 @@
   "embedding_url": "http://127.0.0.1:11500/v1/embeddings",
   "embedding_model": "nomic-embed-text",
   "embedding_api_key": "",
-  "embedding_timeout_ms": 30000,
+  "embedding_timeout_ms": 60000,
   "dedup_enabled": true,
   "dedup_threshold": 0.92,
   "recency_enabled": true,
@@ -85,6 +85,7 @@
   "salience_access_k": 10,
   "salience_score_w": 0.7,
   "auto_backup_interval_hours": 0,
+  "auto_cleanup_enabled": true,
   "rate_limit_max": 300,
   "rate_limit_window_ms": 60000
 }

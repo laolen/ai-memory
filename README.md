@@ -320,19 +320,17 @@ API_KEY=my-secret-key-114514 BASE=http://192.168.110.128:8765 node test/run.js
 - 长捕获管线：LLM/嵌入推理期间对客户端「无数据下发」，整段空闲可达 20~40s，故依赖服务侧 socket 超时已调高（≥120s），否则客户端会报 "other side closed"。
 - 期望输出：`===== OVERALL ok=N fail=0 =====`（N 随套件增减，v1.21.0 基线 82 项全过）。任一 `fail>0` 即阻断。
 
-### CI 子集（test/ci.js）与覆盖率
+### 本地快速验证子集（test/ci.js）
 
-`test/ci.js` 是 CI 专用运行器，仅跑**纯 SQLite 降级模式**可验证的用例（不依赖外部 Qdrant/嵌入/LLM）：`unit / health / memory_ops / config / config_drift / rate_limit / fallback / backup_restore`。本地等价于：
+`test/ci.js` 是本地快速运行器，仅跑**纯 SQLite 降级模式**可验证的用例（不依赖外部 Qdrant/嵌入/LLM）：`unit / health / memory_ops / config / config_drift / rate_limit / fallback / backup_restore`。本地等价于：
 
 ```bash
 # 本地：先以降级模式起服务，再跑子集
 QDRANT_URL='' EMBEDDING_URL='' PORT=8765 node server.js &
 BASE=http://127.0.0.1:8765 node test/ci.js
-# 覆盖率（c8 包裹，仅统计 lib/）
-npx c8 --include='lib/**/*.js' --reporter=text --reporter=lcov node test/ci.js
 ```
 
-> 注意：CI 工作流 `.github/workflows/test.yml` 依赖 `test/` 目录在仓库内。若沿用「测试文件不入库」约定（`test/` 在 `.gitignore`），需改为提交 `test/`（或至少 `test/ci.js` + 所需用例）CI 才真正可执行。详见文末「测试文件入库」说明。
+> 注：`test/` 目录整体在 `.gitignore`（测试文件不入库，仅本地验证用）。`test/ci.js` 作为本地子集运行器保留；CI 工作流暂未纳入仓库（按约定测试文件不入库，若要做 CI 需放宽该约定并重建 `.github/workflows/test.yml`）。
 
 ### 多客户端配置漂移检测（scripts/config-drift.js）
 
@@ -496,7 +494,7 @@ node scripts/config-drift.js server:http://192.168.110.128:8765 file:~/.workbudd
 
 - **v1.22.0**（当前版本）：操作审计 + Qdrant 运行时降级双批次（无新依赖）。**审计侧 ① 全局审计路由**：新增 `GET /api/audit`，支持 `op`/`user`/`project`/`trigger` 过滤 + `limit`/`offset` 分页，返回 `{rows,total}`，补齐「谁、何时、对哪条记忆做了什么」的全局可追溯视图（此前仅有单条记忆 history 与 CORRECT 查询，无全局审计流）。**② admin 操作审计 Tab**：新增「操作审计」页（按操作类型 ADD/UPDATE/DELETE/PIN/UNPIN/CORRECT + 项目过滤），展示时间、记忆 ID、用户、来源与变更摘要（DELETE 显示删除前内容、PIN/UNPIN 标记固定动作）。**③ PIN/UNPIN 专属记录**：`doUpdate` 在 patch 仅含 `pinned` 时记 `PIN`/`UNPIN` op（此前混为 `UPDATE`），语义清晰可检索。**④ audit_enabled 开关**：`lib/config.js` 新增 `audit_enabled`（默认 true），关闭后 `recordChangelog` 静默跳过，满足合规关停需求。**降级侧 ⑤ Qdrant 运行时可达性探测**：此前「`qdrant_url` 已配置但运行期挂了」只会静态信任配置、写入仍走 Qdrant 路径导致失败，降级名存实亡。`lib/qdrant.js` 新增 `isReachable()` 状态缓存（由 `health()` 更新），`lib/memory.js` 的 `Q()` 改为「配置存在 **且** 运行期可达」才走 Qdrant；`/api/health` 的 `store` 字段据实填 `qdrant`/`sqlite`、`qdrant_connected` 据实填 `true`/`false`（此前仅看配置）；`startServer()` 起每 30s 探针刷新可达性。**⑥ 全局请求限流（P1-3）**：新增零依赖内存固定窗口限流（`lib/rest.js` 全局 `onRequest` 钩子，按客户端 IP 计数），默认 `rate_limit_max=300`/分钟/`rate_limit_window_ms=60000`——宽松到不影响正常多智能体并发，但能挡住失控洪水；`0`/负即关闭。故意绕过早期 `@fastify/rate-limit` 全局化时的 ECONNRESET 回归路径（受保护路由的 `@fastify/rate-limit` 60/min 仍保留为第二层）。`/api/health`、`/metrics`、`/api/docs`、`/docs`、`/admin` 自动豁免（运维探针不被自身限流）。超限返回 `429` + `Retry-After` 头。admin「⚙️ 高级与安全」新增「🆕 全局请求限流」控件（限额/窗口），`POST /api/config` 白名单与 `/api/docs` 配置字段同步补齐。配置项新增 2 个：`rate_limit_max`、`rate_limit_window_ms`（加在 `audit_enabled` 之后，共 3 个新配置项）。**⑦ 备份恢复端到端测试（P1-4）**：新增 `test/backup_restore.js`——写入一批记忆 → `POST /api/backup` 落盘 → `DELETE /api/memories/filter` 清空 → `POST /api/backups/restore` 恢复 → 断言数据完整回来（计数复原）。自包含（SQLite 模式 + 临时 backup 目录），本地与 128 均可独立跑；补齐此前仅 `io.js` 覆盖 `/api/backup`/`/api/import`、缺「删除后恢复」闭环验证的缺口。端到端验证：`node test/run.js`（新增 `test/audit.js` 11/11、`test/fallback.js` 9/9、`test/rate_limit.js` 6/6、`test/backup_restore.js` 11/11；backup_restore 确认备份→删除→恢复计数 3→0→3）。注：`audit_enabled`/`rate_limit_*` 为生产代码改动（经 deploy.js 上 128 验证）；`backup_restore.js` 仅新增测试，验证的是 v1.21.0 既有备份/恢复接口。
 
-  **P2 批次（检索质量 + 多客户端漂移 + CI/覆盖率）**：**⑧ 检索质量评估集（P2-5）**：新增 `test/retrieval_quality.js`——定义「golden query + 期望命中记忆 + 干扰项」评估集（数据库持久性 / TCP 握手 / 前端虚拟 DOM 三个主题，各 1 目标 + 5 干扰），Qdrant 下用转述问句做混合检索、断言目标排名严格优于全部干扰项且进 top-3（相关性排序质量门），SQLite 下降级为关键词召回断言；评估记忆写入独立项目、结束全量清理，避免污染共享 Qdrant。**⑨ 多客户端配置漂移检测（P2-6）**：新增 `GET /api/config/public` 公开连接契约端点（仅含非密连接信息与「密钥是否存在」布尔标志，绝不回传任何密钥明文/掩码——专供多客户端互操作性校验），配套 `scripts/config-drift.js` CLI（对比 `server:<url>` / `file:<path>` 多源，支持 config.json 与 MCP server 定义 `mcpServers` 两种形态，输出漂移矩阵、发现漂移非零退出，CI 友好），新增 `test/config_drift.js` 守护「公开契约零密钥泄漏」红线。**⑩ CI + 覆盖率（P2-7）**：新增 `.github/workflows/test.yml`（push/PR 触发，ubuntu-latest，`npm ci` → 纯 SQLite 降级模式起服务 → `npx c8` 跑 `test/ci.js` 子集 → 上传 lcov），`test/ci.js` 仅含降级模式可跑的用例（unit/health/memory_ops/config/config_drift + 自包含 rate_limit/fallback/backup_restore），`package.json` 加 `test:ci` / `coverage` 脚本与 `c8` devDependency。端到端验证：`node test/ci.js` 子集 75/75 全过；`npx c8 ... node test/ci.js` 正常产出覆盖率报告。
+  **P2 批次（检索质量 + 多客户端漂移）**：**⑧ 检索质量评估集（P2-5）**：新增 `test/retrieval_quality.js`——定义「golden query + 期望命中记忆 + 干扰项」评估集（数据库持久性 / TCP 握手 / 前端虚拟 DOM 三个主题，各 1 目标 + 5 干扰），Qdrant 下用转述问句做混合检索、断言目标排名严格优于全部干扰项且进 top-3（相关性排序质量门），SQLite 下降级为关键词召回断言；评估记忆写入独立项目、结束全量清理，避免污染共享 Qdrant。**⑨ 多客户端配置漂移检测（P2-6）**：新增 `GET /api/config/public` 公开连接契约端点（仅含非密连接信息与「密钥是否存在」布尔标志，绝不回传任何密钥明文/掩码——专供多客户端互操作性校验），配套 `scripts/config-drift.js` CLI（对比 `server:<url>` / `file:<path>` 多源，支持 config.json 与 MCP server 定义 `mcpServers` 两种形态，输出漂移矩阵、发现漂移非零退出，CI 友好），新增 `test/config_drift.js` 守护「公开契约零密钥泄漏」红线。**⑩ CI + 覆盖率（P2-7，本次暂缓）**：CI 工作流（`.github/workflows/test.yml`）与 `c8` 覆盖率依赖按用户决策**暂不纳入本版本**（已删除 test.yml、回退 `package.json` 的 `c8` devDep 与 `coverage`/`test:ci` script，`version` 保留 1.22.0）。本地快速验证子集 `test/ci.js` 仍保留为 gitignored 本地工具（仅跑 SQLite 降级可验证用例）；日后若启用 CI，需放宽「测试不入库」约定并重建 `test.yml` 与所需 `test/` 用例。
 
 - **v1.21.0**：配置管理+运维增强批次（P0-P5，6 项改进，无新依赖）。**P0 webhook_secret 签名**：`lib/webhook.js` 终于消费 `webhook_secret` 配置（之前是空功能），出站 POST 做 HMAC-SHA256 签名，带 `X-Signature: sha256=...` header。**P1 config_fields 文档补全**：`/api/docs` 配置表从 ~46 项补全至与真实 CONFIG 对齐（补齐 `capture_min_chars`、`kg_max_entities`、`source_trust_weights`、`reconcile_enabled` 等 25+ 项），修复 `reranker_enabled` 不存在键的错误。**P2 salience 权重可配置**：`salience_w_imp/w_acc/access_k/score_w` 4 个评分常量从硬编码改为 config.json 可调（admin 高级页面 UI + loadConfig/saveConfig + POST 白名单 + `intelligence.js` 消费处同步更新）。**P3 定时备份和管理面板**：SQLite `backups` 记录表 + `GET /api/backups`/`POST /api/backups/restore`/`GET /api/backups/download/:name` 管理接口 + admin 数据页备份面板（一键备份/列表/下载/恢复）+ scheduler 定时备份（`auto_backup_interval_hours` 配置，默认 0=关）。**P4 标签管理器**：`GET /api/tags`（频率列表）+ `POST /api/tags/rename`（重命名）+ `POST /api/tags/delete`（删除），跨所有记忆同步操作。**P5 运维监控面板**：配置页新增「📊 运维」子标签——搜索缓存命中率/未命中/条数 + scheduler 最近 15 次执行历史（时间、状态、健康、到期、矛盾、自动备份）。配置项新增 9 个：`salience_w_imp`/`salience_w_acc`/`salience_access_k`/`salience_score_w`/`auto_backup_interval_hours`。回归 82/82 fail=0。
 

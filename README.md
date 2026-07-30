@@ -86,7 +86,7 @@ ssh root@192.168.110.128 'systemctl stop ai-memory && rm -rf /opt/ai-memory && t
 
 ### 2.4 自动捕获（混合：LLM 智能提取 + 启发式回退）
 两种触发方式：
-- **MCP 工具 `capture_memory`** / **REST `POST /api/capture`**：传入原始对话/文本。
+- **MCP 工具 `capture_memory`** / **REST `POST /api/capture`**：传入原始对话/文本，或传 `messages` 结构化数组（`[{role, content}]`，messages 优先）；服务端自动过滤闲聊、抽取事实、去重合并后入库。
 - **文件监听 `capture_watch_*`**：监听指定文件/目录，追加内容自动入库（偏移量存 `.capture.offsets.json`，重启续传）。
 
 提取策略（`captureText`）：
@@ -421,7 +421,7 @@ node scripts/config-drift.js server:http://192.168.110.128:8765 file:~/.workbudd
 | `search_memories` | 检索；`mode`=keyword/semantic/hybrid；`from`/`to` 时间窗；`recency` 加权 |
 | `list_memories` | 列出记忆（支持过滤） |
 | `get_memory` / `update_memory` / `delete_memory` | 单条读取/编辑/删除（编辑会重算向量与图谱） |
-| `capture_memory` | 自动捕获：有 LLM 则智能提取，否则启发式按句切分 |
+| `capture_memory` | 自动捕获：有 LLM 则智能提取，否则启发式按句切分；支持 `text` 或 `messages:[{role,content}]` 两种入参 |
 | `related_to` | 知识图谱：某实体的相连实体（含关系类型、次数）+ 来源记忆 |
 | `graph_query` | 知识图谱：涉及某实体的原始实体/关系子图 |
 | `path_between` | 知识图谱：两实体间关系路径（BFS），不相连返回 `path:null` |
@@ -490,9 +490,43 @@ node scripts/config-drift.js server:http://192.168.110.128:8765 file:~/.workbudd
 
 ---
 
+## 多工具 / 多客户端接入（快速接入指南）
+
+> 完整客户端配置片段、Hook 模板、stdio 桥接器用法见 **[`docs/integration.md`](./docs/integration.md)**。本节是速览。
+
+### 传输与端点
+
+| 传输 | 端点 | 用途 |
+|------|------|------|
+| **MCP · SSE** | `http://<host>:8765/sse?key=<api_key>` | Cursor / Cline / Roo / Windsurf 等大多数工具 |
+| **MCP · Streamable HTTP** | `http://<host>:8765/mcp?key=<api_key>` | Zed / VS Code Copilot / Claude Code |
+| **MCP · stdio** | `node lib/stdio_bridge.js --endpoint <sse-url> --project <工作区路径>` | opencode / Claude Code 本地模式（零依赖，自动注入 project） |
+| **REST** | `http://<host>:8765/api/*` | 脚本 / 无 MCP 的工具（心跳、批处理） |
+
+- 工具命名：`add_memory` / `search_memories` / `list_memories` / `delete_memory` / `capture_memory` / `related_to` 等。
+- **项目隔离（scope）**：调用方传 `project` = 当前工作区路径（如 `D:\project\ai-memory`），同一文件夹跨会话归同一 project；stdio 桥接器可用 `--project` 连接级兜底。
+
+### capture_memory 的两种入参
+
+- `text`（字符串）：原始对话 / 笔记 / 转录原文。
+- `messages`（数组，**优先**）：结构化对话，每项 `{ role: 'user'|'assistant'|'system', content: '...' }`。服务端自动拼接为带角色标签的转写文本（如 `USER: ...\nASSISTANT: ...`）后送入抽取管线，LLM 抽取质量更高。
+- REST 等价：`POST /api/capture` 的 body 同样接受 `text` 或 `messages`，整包透传为 scope。
+
+### 让记忆"自动用起来"的三种驱动
+
+1. **规则文件驱动（跨工具通用底座）**：项目根 `AGENTS.md` / `CLAUDE.md` / `.cursorrules` 写明"遇决策就 add/capture_memory"，AI 在对话中主动调用——几乎所有支持 MCP 的工具都会加载它。
+2. **Claude Code Hooks**：`SessionStart` / `Stop` 钩子在会话边界触发 `curl` 调 `capture_memory` / `/api/capture`（详见 integration.md 第五节；hook 拿不到对话文本，仅做心跳兜底）。
+3. **WorkBuddy 客户端**：WorkBuddy 加载项目 `AGENTS.md` / 系统指令即可驱动 AI 在收尾时主动调用 `capture_memory`（指令模板见 integration.md 第八节）；也可用「自动化（定时）」做轻量归档 / 心跳兜底（注意自动化是定时触发、非会话边界）。
+
+> 关键：**协议与 capture 管线都不会在 AI 不调用时自动落库**——记忆要"自动用起来"，必须由客户端（规则文件 / Hook / 自动化）主动调用 `capture_memory` 或 `/api/capture`。
+
 ## 十一、版本
 
-- **v1.22.1**（当前热修复版本）：Embedding 冷启动 + 去重 + 过期清理 + 真实计数。**① Embedding 重试与冷启动预热**（`lib/embed.js` `_embedRemote`）：新增指数退避重试（首次失败自动重试 2 次，超时 60s→90s→120s 渐进），`warmupEmbedding()` 服务启动时 fire-and-forget 预热 embedding 模型。`embedding_timeout_ms` 默认值从 30s 提升至 60s。**② Exact-content 前置去重**（`lib/memory.js` `doAdd`）：在向量去重之前，先基于 `content_hash` 查 SQLite 精确匹配（不依赖 embedding），嵌入失败导致的重复写入被彻底阻断（确认 128 上 24 组共 69 条重复已清理）。**③ Scheduler 自动过期清理**（`lib/scheduler.js` `scanOnce`）：接入 `lifecycle.cleanupExpired()`，新增 `auto_cleanup_enabled` 配置（默认 true），每次 scheduler 轮巡自动清理过期记忆。**④ List 接口真实总数**（`lib/memory.js` `doList` + `lib/rest.js` 响应）：`GET /api/memories` 的 `count` 字段从「分页行数」修复为 Qdrant `count`/SQLite `COUNT(*)` 真实匹配总数。**⑤ 128 运维配置**：远程启用 `auto_backup_interval_hours=24` 定时备份 + `auto_cleanup_enabled=true` 自动清理。**⑥ 数据清洗**：128 上 98 条已过期记忆已清理 + 24 组 69 条重复冗余已删。回归 82/82 fail=0。
+- **v1.22.3**：多工具接入增强（#2/#4/#150，零新依赖）。**① `capture_memory` 支持 `messages` 数组入参**：每项 `{role, content}`，与 `text` 二选一或并存（messages 优先），服务端统一在 `captureText` 内拼接为带角色标签的转写文本后送入既有抽取管线；REST `POST /api/capture` 透传 body 同步获得该能力，`text` 不再强制必填。**② WorkBuddy 客户端接入模板**（`docs/integration.md` 第八节）：给出「系统指令模板（驱动 AI 收尾时主动 capture）+ 定时自动化心跳兜底」两种落地方式。**③ 新增「多工具 / 多客户端接入」README 章节**：速览 MCP(SSE/HTTP/stdio) / REST / stdio_bridge / Claude Code & WorkBuddy Hook / `messages` 入参等全部接入路径，与 `docs/integration.md` 详参互补。
+
+- **v1.22.2**：修复 project 含反斜杠时 Qdrant 过滤失效。**根因**：Qdrant keyword `match.value` 无法匹配含反斜杠字符串，Windows 工作区路径（如 `D:\project\ai-memory`）作 project 过滤值整体失配，导致 `doList`/`doSearch` 的 `count` 与 `rows` 不一致。**修复**：新增 `backend.normalizeProject`，在写入（doAdd/doUpdate/importMemories/capture）与查询（qdrantFilter/dedupFind/listWorkingMemory/exportMemories/rest 直查）两侧统一将反斜杠归一为正斜杠；`qdrant.count` 改 `exact:true` 返回真实过滤总数。**迁移**：`scripts/migrate_project_slashes.js` 一次性归一化 Qdrant 与本地 SQLite 镜像存量数据（128 已执行：Qdrant 6 点 + SQLite 25 行）。
+
+- **v1.22.1**（历史热修复版本）：Embedding 冷启动 + 去重 + 过期清理 + 真实计数。**① Embedding 重试与冷启动预热**（`lib/embed.js` `_embedRemote`）：新增指数退避重试（首次失败自动重试 2 次，超时 60s→90s→120s 渐进），`warmupEmbedding()` 服务启动时 fire-and-forget 预热 embedding 模型。`embedding_timeout_ms` 默认值从 30s 提升至 60s。**② Exact-content 前置去重**（`lib/memory.js` `doAdd`）：在向量去重之前，先基于 `content_hash` 查 SQLite 精确匹配（不依赖 embedding），嵌入失败导致的重复写入被彻底阻断（确认 128 上 24 组共 69 条重复已清理）。**③ Scheduler 自动过期清理**（`lib/scheduler.js` `scanOnce`）：接入 `lifecycle.cleanupExpired()`，新增 `auto_cleanup_enabled` 配置（默认 true），每次 scheduler 轮巡自动清理过期记忆。**④ List 接口真实总数**（`lib/memory.js` `doList` + `lib/rest.js` 响应）：`GET /api/memories` 的 `count` 字段从「分页行数」修复为 Qdrant `count`/SQLite `COUNT(*)` 真实匹配总数。**⑤ 128 运维配置**：远程启用 `auto_backup_interval_hours=24` 定时备份 + `auto_cleanup_enabled=true` 自动清理。**⑥ 数据清洗**：128 上 98 条已过期记忆已清理 + 24 组 69 条重复冗余已删。回归 82/82 fail=0。
 
 - **v1.22.0**：操作审计 + Qdrant 运行时降级双批次（无新依赖）。**审计侧 ① 全局审计路由**：新增 `GET /api/audit`，支持 `op`/`user`/`project`/`trigger` 过滤 + `limit`/`offset` 分页，返回 `{rows,total}`，补齐「谁、何时、对哪条记忆做了什么」的全局可追溯视图（此前仅有单条记忆 history 与 CORRECT 查询，无全局审计流）。**② admin 操作审计 Tab**：新增「操作审计」页（按操作类型 ADD/UPDATE/DELETE/PIN/UNPIN/CORRECT + 项目过滤），展示时间、记忆 ID、用户、来源与变更摘要（DELETE 显示删除前内容、PIN/UNPIN 标记固定动作）。**③ PIN/UNPIN 专属记录**：`doUpdate` 在 patch 仅含 `pinned` 时记 `PIN`/`UNPIN` op（此前混为 `UPDATE`），语义清晰可检索。**④ audit_enabled 开关**：`lib/config.js` 新增 `audit_enabled`（默认 true），关闭后 `recordChangelog` 静默跳过，满足合规关停需求。**降级侧 ⑤ Qdrant 运行时可达性探测**：此前「`qdrant_url` 已配置但运行期挂了」只会静态信任配置、写入仍走 Qdrant 路径导致失败，降级名存实亡。`lib/qdrant.js` 新增 `isReachable()` 状态缓存（由 `health()` 更新），`lib/memory.js` 的 `Q()` 改为「配置存在 **且** 运行期可达」才走 Qdrant；`/api/health` 的 `store` 字段据实填 `qdrant`/`sqlite`、`qdrant_connected` 据实填 `true`/`false`（此前仅看配置）；`startServer()` 起每 30s 探针刷新可达性。**⑥ 全局请求限流（P1-3）**：新增零依赖内存固定窗口限流（`lib/rest.js` 全局 `onRequest` 钩子，按客户端 IP 计数），默认 `rate_limit_max=300`/分钟/`rate_limit_window_ms=60000`——宽松到不影响正常多智能体并发，但能挡住失控洪水；`0`/负即关闭。故意绕过早期 `@fastify/rate-limit` 全局化时的 ECONNRESET 回归路径（受保护路由的 `@fastify/rate-limit` 60/min 仍保留为第二层）。`/api/health`、`/metrics`、`/api/docs`、`/docs`、`/admin` 自动豁免（运维探针不被自身限流）。超限返回 `429` + `Retry-After` 头。admin「⚙️ 高级与安全」新增「🆕 全局请求限流」控件（限额/窗口），`POST /api/config` 白名单与 `/api/docs` 配置字段同步补齐。配置项新增 2 个：`rate_limit_max`、`rate_limit_window_ms`（加在 `audit_enabled` 之后，共 3 个新配置项）。**⑦ 备份恢复端到端测试（P1-4）**：新增 `test/backup_restore.js`——写入一批记忆 → `POST /api/backup` 落盘 → `DELETE /api/memories/filter` 清空 → `POST /api/backups/restore` 恢复 → 断言数据完整回来（计数复原）。自包含（SQLite 模式 + 临时 backup 目录），本地与 128 均可独立跑；补齐此前仅 `io.js` 覆盖 `/api/backup`/`/api/import`、缺「删除后恢复」闭环验证的缺口。端到端验证：`node test/run.js`（新增 `test/audit.js` 11/11、`test/fallback.js` 9/9、`test/rate_limit.js` 6/6、`test/backup_restore.js` 11/11；backup_restore 确认备份→删除→恢复计数 3→0→3）。注：`audit_enabled`/`rate_limit_*` 为生产代码改动（经 deploy.js 上 128 验证）；`backup_restore.js` 仅新增测试，验证的是 v1.21.0 既有备份/恢复接口。
 

@@ -217,3 +217,34 @@ curl -s -X POST -H 'Authorization: Bearer my-secret-key-114514' -H 'X-Requested-
 - [x] project 可选 + AI 自动传路径，不强制写死
 - [x] stdio 官方桥接器 `lib/stdio_bridge.js`（零依赖，已验证 initialize + tools/list）
 - [x] 连接级 project 兜底（stdio 桥接器 `--project` 注入，REST 由调用方传入）
+
+---
+
+## 八、WorkBuddy 客户端接入（当前环境）
+
+WorkBuddy 本身即本仓库的日常使用环境，也是「记忆怎么自动用起来」最易落地的客户端。WorkBuddy 会加载项目 `AGENTS.md` 与项目 / 系统指令，因此**第四节的通用纪律模板 + 第六节的自动抽取纪律直接生效**——只要把纪律写进项目 `AGENTS.md` 或 WorkBuddy 的项目指令，AI 就会在收尾时主动调用 `capture_memory`（或 REST `/api/capture`）。
+
+### 指令模板（放进 WorkBuddy 项目指令 / AGENTS.md）
+
+```markdown
+# 长期记忆 (ai-memory) —— WorkBuddy 客户端纪律
+
+- 会话开始：先 `search_memories` 检索与当前任务相关的历史记忆（project 由客户端自动注入当前工作区路径）。
+- 记录什么（add_memory）：架构决策 / 技术选型与理由 / 项目约定 / 用户偏好 / 踩坑根因 / 关键命令 / 部署拓扑。content 用中文，tags 标注类别。
+- 自动抽取（capture_memory / /api/capture）：每次完成一个有结论的环节，把近期对话 / 笔记原文（或结构化 `messages:[{role,content}]`）喂给 capture_memory；服务端自动过滤闲聊、抽取事实、去重合并后入库。project 自动注入。
+- REST 兜底（无 MCP 上下文时）：curl -X POST -H 'Authorization: Bearer <key>' -H 'X-Requested-With: ai-memory' -H 'Content-Type: application/json' -d '{"text":"<内容>","project":"<工作区路径>"}' http://<host>:8765/api/capture
+```
+
+### 定时自动化兜底（心跳 / 轻量归档）
+
+WorkBuddy 的「自动化」是**按 rrule 定时触发**，不是会话边界钩子；因此它适合做「周期性心跳 + 轻量归档」，真正高质量的抽取仍靠 AI 在对话中主动调用 `capture_memory`。示例自动化（每天 23:55 心跳归档工作区记忆）：
+
+- **prompt（自动化提示词，自然语言）**：「调用 `POST http://192.168.110.128:8765/api/capture`，body 为 `{"text":"daily heartbeat archive","project":"<工作区路径>"}`，带鉴权头 `Authorization: Bearer <key>` 与 `X-Requested-With: ai-memory`，无需回显结果。」
+- **等价 shell 动作**（若用命令型自动化）：
+
+```bash
+printf '{"text":"daily heartbeat archive","project":"%s"}' "$PWD" > /tmp/cap.json && \
+curl -s -X POST -H 'Authorization: Bearer my-secret-key-114514' -H 'X-Requested-With: ai-memory' -H 'Content-Type: application/json' -d @/tmp/cap.json 'http://192.168.110.128:8765/api/capture' >/dev/null 2>&1 || true
+```
+
+> 说明：与 Claude Code Hook 不同，WorkBuddy 自动化无法在「会话结束」那一刻拿到对话文本，故仅作心跳兜底；把抽取纪律写进项目指令、让 AI 在对话中主动 capture，才是高质量路径。

@@ -386,6 +386,13 @@ node scripts/config-drift.js server:http://192.168.110.128:8765 file:~/.workbudd
 | `search_cache_max` | `200` | 搜索缓存最大条目数（v1.20.0） |
 | `suggest_related` | `true` | 记忆关联推荐开关：add_memory 返回 related_suggestions（v1.20.0） |
 | `suggest_related_limit` | `5` | 关联推荐返回条数（v1.20.0） |
+| `llm_proxy_enabled` | `false` | LLM 代理旁路总开关（v1.23.0）：开启后 `/llm/v1/chat/completions` 转发真实 LLM 并自动捕获整段对话 |
+| `llm_proxy_url` | 空 | 代理上游 LLM 地址（留空=复用 `llm_url`；支持以 `/v1` 结尾，自动补 `/chat/completions`） |
+| `llm_proxy_model` | 空 | 代理默认模型（请求带 `model` 时以其为准） |
+| `llm_proxy_api_key` | 空 | 代理上游 API Key（留空=复用 `llm_api_key`） |
+| `llm_proxy_auto_capture` | `true` | 代理响应后是否自动把整段对话入库（v1.23.0） |
+| `llm_proxy_capture_project` | 空 | 自动捕获归属的项目（缺省经 `X-Project-Path` 头 / `?project=` 覆盖；scoped key 作用域优先） |
+| `llm_proxy_user` | `assistant` | 自动捕获时记忆的归属来源（v1.23.0） |
 
 > `api_key` 在 `/api/config` 返回中被掩码为 `******`；保存时仅当值不为 `******` 才更新（掩码不会覆盖真值）。
 
@@ -512,15 +519,32 @@ node scripts/config-drift.js server:http://192.168.110.128:8765 file:~/.workbudd
 - `messages`（数组，**优先**）：结构化对话，每项 `{ role: 'user'|'assistant'|'system', content: '...' }`。服务端自动拼接为带角色标签的转写文本（如 `USER: ...\nASSISTANT: ...`）后送入抽取管线，LLM 抽取质量更高。
 - REST 等价：`POST /api/capture` 的 body 同样接受 `text` 或 `messages`，整包透传为 scope。
 
-### 让记忆"自动用起来"的三种驱动
+### LLM 代理旁路（无感自动记忆，推荐）
+
+把 ai-memory 当作 OpenAI 兼容的 LLM **前置代理**，宿主客户端无需任何指令、无需改代码，对话即被自动高质量入库——这正是"用户提问 + 智能体回答被智能分析、高质量存储，且用户与 agent 都无感"的终态。
+
+- **怎么做**：客户端把 LLM `base_url` 从真实 LLM 改为 `http://<host>:8765/llm/v1`（API key 仍为 ai-memory 的 `api_key`）。
+- **发生了什么**：`POST /llm/v1/chat/completions` 透明转发到真实 LLM（`llm_proxy_url` 或复用 `llm_url`），非流式返 JSON、流式(`stream:true`) 透传 SSE；**响应结束后**，服务端把整段对话 `[...请求messages, {role:'assistant',content:回复}]` 作为 `messages` 数组自动交给 `capture` 抽取管线入库——用户提问 + 助手回答一起被语义提炼、去重合并。
+- **项目归属**：默认用配置 `llm_proxy_capture_project`；也可在每次请求带 `X-Project-Path: <工作区路径>` 头（或 `?project=`）按工作区隔离；使用 scoped key 时强制落到该 key 的 project。
+- **开关与配置**（详见「配置项详解」与 `config.example.json`）：`llm_proxy_enabled`(总开关) / `llm_proxy_url` / `llm_proxy_model` / `llm_proxy_api_key` / `llm_proxy_auto_capture`(默认开) / `llm_proxy_capture_project` / `llm_proxy_user`。
+- **优雅降级**：上游 LLM 不可达时透传错误状态码与正文，不伪造回复；本代理只做转发 + 旁路捕获，不合成回答。
+- **适用场景**：WorkBuddy / opencode / 任意 OpenAI SDK 客户端——只要能把 `base_url` 指向 ai-memory，就立刻获得「无感自动记忆」，且宿主零改动、AI 不显式触发。
+
+### 让记忆"自动用起来"的驱动方式
+
+**首选：LLM 代理旁路（见上节）**——把 `base_url` 指向 `/llm/v1` 即无感自动，宿主零改动、AI 不显式触发，用户与 agent 都无感。它绕开了"需要 AI 主动调用 capture 才能落库"的根本假设：对话本身即触发。
+
+若客户端无法改 LLM `base_url`（如部分仅支持 MCP、且不能换 LLM 端点的工具），则用以下三种客户端驱动作为替代：
 
 1. **规则文件驱动（跨工具通用底座）**：项目根 `AGENTS.md` / `CLAUDE.md` / `.cursorrules` 写明"遇决策就 add/capture_memory"，AI 在对话中主动调用——几乎所有支持 MCP 的工具都会加载它。
 2. **Claude Code Hooks**：`SessionStart` / `Stop` 钩子在会话边界触发 `curl` 调 `capture_memory` / `/api/capture`（详见 integration.md 第五节；hook 拿不到对话文本，仅做心跳兜底）。
 3. **WorkBuddy 客户端**：WorkBuddy 加载项目 `AGENTS.md` / 系统指令即可驱动 AI 在收尾时主动调用 `capture_memory`（指令模板见 integration.md 第八节）；也可用「自动化（定时）」做轻量归档 / 心跳兜底（注意自动化是定时触发、非会话边界）。
 
-> 关键：**协议与 capture 管线都不会在 AI 不调用时自动落库**——记忆要"自动用起来"，必须由客户端（规则文件 / Hook / 自动化）主动调用 `capture_memory` 或 `/api/capture`。
+> 关键：**除 LLM 代理旁路这种"对话即触发"的路径外**，MCP / REST 协议与 capture 管线本身不会在 AI 不调用时自动落库——其余场景记忆要"自动用起来"，仍需客户端（规则文件 / Hook / 自动化）主动调用 `capture_memory` 或 `/api/capture`。
 
 ## 十一、版本
+
+- **v1.23.0**：新增 **LLM 代理旁路（无感自动记忆）**。**核心**：ai-memory 暴露 OpenAI 兼容的 `POST /llm/v1/chat/completions`（+ `GET /llm/v1/models`），客户端把 LLM `base_url` 指向 `/llm/v1` 即自动开启——代理透明转发真实 LLM（非流式返 JSON、流式透传 SSE），**响应结束后把整段对话 `[...请求messages, {role:'assistant',content:回复}]` 自动交给 `capture` 抽取管线入库**，用户提问+助手回答被一起语义提炼、去重合并。宿主零代码改动、AI 不显式触发，真正实现"无感自动记忆"。支持 project 推断（`X-Project-Path` 头 > `?project=` > 配置默认 > scoped key 作用域）、上游故障优雅降级（透传错误、不伪造回复）、`llm_proxy_*` 七大配置项。补 `lib/llm_proxy.js`，接入 `lib/rest.js` 路由与 `/api/config` 白名单/掩码、`/api/docs`、Prometheus 指标；README 与 `config.example.json` 同步。
 
 - **v1.22.3**：多工具接入增强（#2/#4/#150，零新依赖）。**① `capture_memory` 支持 `messages` 数组入参**：每项 `{role, content}`，与 `text` 二选一或并存（messages 优先），服务端统一在 `captureText` 内拼接为带角色标签的转写文本后送入既有抽取管线；REST `POST /api/capture` 透传 body 同步获得该能力，`text` 不再强制必填。**② WorkBuddy 客户端接入模板**（`docs/integration.md` 第八节）：给出「系统指令模板（驱动 AI 收尾时主动 capture）+ 定时自动化心跳兜底」两种落地方式。**③ 新增「多工具 / 多客户端接入」README 章节**：速览 MCP(SSE/HTTP/stdio) / REST / stdio_bridge / Claude Code & WorkBuddy Hook / `messages` 入参等全部接入路径，与 `docs/integration.md` 详参互补。
 

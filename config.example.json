@@ -87,5 +87,12 @@
   "auto_backup_interval_hours": 0,
   "auto_cleanup_enabled": true,
   "rate_limit_max": 300,
-  "rate_limit_window_ms": 60000
+  "rate_limit_window_ms": 60000,
+  "llm_proxy_enabled": false,
+  "llm_proxy_url": "",
+  "llm_proxy_model": "",
+  "llm_proxy_api_key": "",
+  "llm_proxy_auto_capture": true,
+  "llm_proxy_capture_project": "",
+  "llm_proxy_user": "assistant"
 }

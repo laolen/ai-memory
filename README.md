@@ -390,7 +390,8 @@ node scripts/config-drift.js server:http://192.168.110.128:8765 file:~/.workbudd
 | `llm_proxy_url` | 空 | 代理上游 LLM 地址（留空=复用 `llm_url`；支持以 `/v1` 结尾，自动补 `/chat/completions`） |
 | `llm_proxy_model` | 空 | 代理默认模型（请求带 `model` 时以其为准） |
 | `llm_proxy_api_key` | 空 | 代理上游 API Key（留空=复用 `llm_api_key`） |
-| `llm_proxy_auto_capture` | `true` | 代理响应后是否自动把整段对话入库（v1.23.0） |
+| `llm_proxy_auto_capture` | `true` | 代理响应后是否自动把本轮对话入库（v1.23.0） |
+| `llm_proxy_capture_scope` | `turn` | 送入抽取的范围（v1.23.1）：`turn`=只取本轮 user+assistant（丢弃 system/历史/tool）；`full`=整段历史（噪声大、旧轮次会被重复抽取，不推荐） |
 | `llm_proxy_capture_project` | 空 | 自动捕获归属的项目（缺省经 `X-Project-Path` 头 / `?project=` 覆盖；scoped key 作用域优先） |
 | `llm_proxy_user` | `assistant` | 自动捕获时记忆的归属来源（v1.23.0） |
 
@@ -524,9 +525,10 @@ node scripts/config-drift.js server:http://192.168.110.128:8765 file:~/.workbudd
 把 ai-memory 当作 OpenAI 兼容的 LLM **前置代理**，宿主客户端无需任何指令、无需改代码，对话即被自动高质量入库——这正是"用户提问 + 智能体回答被智能分析、高质量存储，且用户与 agent 都无感"的终态。
 
 - **怎么做**：客户端把 LLM `base_url` 从真实 LLM 改为 `http://<host>:8765/llm/v1`（API key 仍为 ai-memory 的 `api_key`）。
-- **发生了什么**：`POST /llm/v1/chat/completions` 透明转发到真实 LLM（`llm_proxy_url` 或复用 `llm_url`），非流式返 JSON、流式(`stream:true`) 透传 SSE；**响应结束后**，服务端把整段对话 `[...请求messages, {role:'assistant',content:回复}]` 作为 `messages` 数组自动交给 `capture` 抽取管线入库——用户提问 + 助手回答一起被语义提炼、去重合并。
+- **发生了什么**：`POST /llm/v1/chat/completions` 透明转发到真实 LLM（`llm_proxy_url` 或复用 `llm_url`），非流式返 JSON、流式(`stream:true`) 透传 SSE；**响应结束后**，服务端只取**本轮**对话 `[{role:'user',content:本轮提问}, {role:'assistant',content:本次回复}]` 交给 `capture` 抽取管线入库，由抽取引擎自行判断哪些值得存。
+- **只送本轮，不送整段历史（v1.23.1）**：请求里的 `system` 提示、历史轮次、`tool` 消息**全部丢弃**——它们对事实抽取是纯噪声，还会让旧轮次每轮被重复抽取一遍。取数规则＝倒序找最后一条 `user` 消息 + 本次助手回复；多模态 `content` 数组自动提取其中的 `text` 段；单段超 8000 字符自动截断，避免超长工具输出撑爆抽取上下文。需要旧行为可设 `llm_proxy_capture_scope='full'`（不推荐）。
 - **项目归属**：默认用配置 `llm_proxy_capture_project`；也可在每次请求带 `X-Project-Path: <工作区路径>` 头（或 `?project=`）按工作区隔离；使用 scoped key 时强制落到该 key 的 project。
-- **开关与配置**（详见「配置项详解」与 `config.example.json`）：`llm_proxy_enabled`(总开关) / `llm_proxy_url` / `llm_proxy_model` / `llm_proxy_api_key` / `llm_proxy_auto_capture`(默认开) / `llm_proxy_capture_project` / `llm_proxy_user`。
+- **开关与配置**（详见「配置项详解」与 `config.example.json`）：`llm_proxy_enabled`(总开关) / `llm_proxy_url` / `llm_proxy_model` / `llm_proxy_api_key` / `llm_proxy_auto_capture`(默认开) / `llm_proxy_capture_scope`(默认 `turn`) / `llm_proxy_capture_project` / `llm_proxy_user`。
 - **优雅降级**：上游 LLM 不可达时透传错误状态码与正文，不伪造回复；本代理只做转发 + 旁路捕获，不合成回答。
 - **适用场景**：WorkBuddy / opencode / 任意 OpenAI SDK 客户端——只要能把 `base_url` 指向 ai-memory，就立刻获得「无感自动记忆」，且宿主零改动、AI 不显式触发。
 
@@ -543,6 +545,8 @@ node scripts/config-drift.js server:http://192.168.110.128:8765 file:~/.workbudd
 > 关键：**除 LLM 代理旁路这种"对话即触发"的路径外**，MCP / REST 协议与 capture 管线本身不会在 AI 不调用时自动落库——其余场景记忆要"自动用起来"，仍需客户端（规则文件 / Hook / 自动化）主动调用 `capture_memory` 或 `/api/capture`。
 
 ## 十一、版本
+
+- **v1.23.1**：**代理捕获只送「本轮」，不再灌整段历史**。此前把客户端请求里的全部 `messages`（含 `system` 提示、历次问答、`tool` 输出）一并送进抽取管线——历史越长噪声越大，且旧轮次每轮都会被重复抽取一遍。现改为倒序取**最后一条 `user` 消息 + 本次助手回复**两段，其余全部丢弃，由抽取引擎自行判断哪些值得存；多模态 `content` 数组自动提取 `text` 段，单段超 8000 字符自动截断（防超长工具输出撑爆抽取上下文）。新增 `llm_proxy_capture_scope` 配置（`turn` 默认 / `full` 旧行为，不推荐）。改 `lib/llm_proxy.js`（`pickCurrentTurn`/`textOf`/`clip`），`lib/config.js`、`lib/rest.js`（配置白名单/`/api/config/public`/`/api/docs`）、`config.example.json`、README 同步。
 
 - **v1.23.0**：新增 **LLM 代理旁路（无感自动记忆）**。**核心**：ai-memory 暴露 OpenAI 兼容的 `POST /llm/v1/chat/completions`（+ `GET /llm/v1/models`），客户端把 LLM `base_url` 指向 `/llm/v1` 即自动开启——代理透明转发真实 LLM（非流式返 JSON、流式透传 SSE），**响应结束后把整段对话 `[...请求messages, {role:'assistant',content:回复}]` 自动交给 `capture` 抽取管线入库**，用户提问+助手回答被一起语义提炼、去重合并。宿主零代码改动、AI 不显式触发，真正实现"无感自动记忆"。支持 project 推断（`X-Project-Path` 头 > `?project=` > 配置默认 > scoped key 作用域）、上游故障优雅降级（透传错误、不伪造回复）、`llm_proxy_*` 七大配置项。补 `lib/llm_proxy.js`，接入 `lib/rest.js` 路由与 `/api/config` 白名单/掩码、`/api/docs`、Prometheus 指标；README 与 `config.example.json` 同步。
 

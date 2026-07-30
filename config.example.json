@@ -93,6 +93,7 @@
   "llm_proxy_model": "",
   "llm_proxy_api_key": "",
   "llm_proxy_auto_capture": true,
+  "llm_proxy_capture_scope": "turn",
   "llm_proxy_capture_project": "",
   "llm_proxy_user": "assistant"
 }
